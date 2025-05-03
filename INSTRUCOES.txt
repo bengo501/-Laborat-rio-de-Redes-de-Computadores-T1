@@ -1,0 +1,181 @@
+INSTRUÇÕES PARA EXECUÇÃO E ENTREGA DO TRABALHO DE REDES
+
+1. PREPARAÇÃO DO AMBIENTE
+----------------------------------------
+1.1. Instalação de Dependências
+pip install -r requirements.txt
+
+1.2. Instalação do Wireshark
+- Windows: Baixar do site oficial https://www.wireshark.org/
+- Linux: sudo apt-get install wireshark
+
+1.3. Instalação do netem (apenas Linux)
+sudo apt-get install iproute2
+
+2. EXECUÇÃO DO PROGRAMA
+----------------------------------------
+2.1. Abrir três terminais diferentes e executar:
+
+Terminal 1:
+python main.py dispositivo1
+
+Terminal 2:
+python main.py dispositivo2
+
+Terminal 3:
+python main.py dispositivo3
+
+2.2. Em cada terminal, testar as seguintes operações:
+1. Listar dispositivos (opção 1)
+2. Enviar mensagem (opção 2)
+3. Enviar arquivo (opção 3)
+
+3. CAPTURA DE PACOTES COM WIRESHARK
+----------------------------------------
+3.1. Configuração do Wireshark
+1. Abrir o Wireshark
+2. Selecionar a interface de rede correta
+3. Aplicar filtro: udp port 5000 (ou a porta usada pelo programa)
+4. Iniciar captura
+
+3.2. Realizar as seguintes capturas:
+1. Captura normal:
+   - Iniciar captura
+   - Realizar operações básicas
+   - Parar e salvar como "captura_normal.pcap"
+
+2. Captura com transferência de arquivo:
+   - Iniciar captura
+   - Enviar arquivo grande
+   - Parar e salvar como "captura_arquivo.pcap"
+
+4. SIMULAÇÃO DE CONDIÇÕES ADVERSAS (Linux)
+----------------------------------------
+4.1. Identificar interface de rede:
+ip link show
+
+4.2. Teste de Perda de Pacotes:
+sudo tc qdisc add dev eth0 root netem loss 10%
+# Realizar testes
+sudo tc qdisc del dev eth0 root
+
+4.3. Teste de Duplicação:
+sudo tc qdisc add dev eth0 root netem duplicate 5%
+# Realizar testes
+sudo tc qdisc del dev eth0 root
+
+4.4. Teste de Reordenação:
+sudo tc qdisc add dev eth0 root netem delay 100ms reorder 25%
+# Realizar testes
+sudo tc qdisc del dev eth0 root
+
+4.5. Teste de Atraso:
+sudo tc qdisc add dev eth0 root netem delay 200ms
+# Realizar testes
+sudo tc qdisc del dev eth0 root
+
+5. O QUE ENTREGAR
+----------------------------------------
+5.1. Código Fonte
+- main.py
+- device.py
+- protocol.py
+- requirements.txt
+
+5.2. Relatório (5-8 páginas)
+Estrutura sugerida:
+1. Introdução
+   - Objetivos do trabalho
+   - Descrição do protocolo
+   - Motivação
+
+2. Implementação
+   - Estrutura do código
+   - Protocolo de descoberta
+   - Mecanismos de confiabilidade
+   - Detalhes técnicos
+
+3. Testes e Resultados
+   - Ambiente de teste
+   - Cenários testados
+   - Resultados obtidos
+   - Análise das capturas
+
+4. Conclusão
+   - Resultados alcançados
+   - Dificuldades encontradas
+   - Aprendizados
+   - Sugestões de melhorias
+
+5.3. Capturas de Rede (.pcap)
+- captura_normal.pcap
+- captura_arquivo.pcap
+- captura_perda.pcap
+- captura_duplicacao.pcap
+- captura_reordenacao.pcap
+
+5.4. Apresentação (5-7 minutos)
+Roteiro sugerido:
+1. Introdução (1 min)
+   - Objetivos
+   - Protocolo
+
+2. Demonstração (2 min)
+   - Funcionamento básico
+   - Envio de mensagens
+   - Transferência de arquivos
+
+3. Mecanismos de Confiabilidade (2 min)
+   - Retransmissão
+   - Verificação de integridade
+   - Eliminação de duplicatas
+
+4. Análise de Capturas (1 min)
+   - Mostrar capturas importantes
+   - Explicar comportamentos
+
+5. Conclusão (1 min)
+   - Resultados
+   - Aprendizados
+
+6. DICAS PARA A APRESENTAÇÃO
+----------------------------------------
+1. Prepare um roteiro detalhado
+2. Pratique o tempo (5-7 minutos)
+3. Tenha as capturas prontas para mostrar
+4. Prepare exemplos de falhas e recuperação
+5. Antecipe perguntas comuns:
+   - Como funciona o protocolo de descoberta?
+   - Como é feita a retransmissão?
+   - Como é verificada a integridade?
+   - Quais são as limitações do sistema?
+
+7. PRAZOS E FORMATO DE ENTREGA
+----------------------------------------
+1. Data de entrega: 05/05
+2. Formato do relatório: PDF
+3. Código fonte: Arquivos .py
+4. Capturas: Arquivos .pcap
+5. Apresentação: Slides em PDF (opcional)
+
+8. CRITÉRIOS DE AVALIAÇÃO
+----------------------------------------
+1. Implementação do protocolo (40%)
+   - Descoberta automática
+   - Comunicação confiável
+   - Transferência de arquivos
+
+2. Mecanismos de Confiabilidade (30%)
+   - Retransmissão
+   - Verificação de integridade
+   - Eliminação de duplicatas
+
+3. Documentação e Relatório (20%)
+   - Clareza
+   - Completude
+   - Análise dos resultados
+
+4. Apresentação (10%)
+   - Organização
+   - Clareza
+   - Respostas às perguntas 

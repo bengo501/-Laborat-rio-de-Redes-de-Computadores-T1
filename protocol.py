@@ -1,79 +1,125 @@
-import json
-from enum import Enum
-from dataclasses import dataclass
-from typing import Optional, Any
-import hashlib
-import base64
+# imports necessários para o protocolo
+import json  # para serialização de mensagens
+import hashlib  # para cálculo de hash
+import base64  # para codificação de dados
+from enum import Enum  # para tipos de mensagens
+from typing import Dict, Any  # para tipagem
+import uuid  # para gerar ids únicos
 
-class MessageType(Enum):
-    HEARTBEAT = "HEARTBEAT"
-    TALK = "TALK"
-    FILE = "FILE"
-    CHUNK = "CHUNK"
-    END = "END"
-    ACK = "ACK"
-    NACK = "NACK"
+# tipos de mensagens suportados pelo protocolo
+class TipoMensagem(Enum):
+    """tipos de mensagens suportados pelo protocolo"""
+    HEARTBEAT = "HEARTBEAT"  # mensagem de presença
+    TALK = "TALK"           # mensagem de texto
+    FILE = "FILE"           # início de transferência de arquivo
+    CHUNK = "CHUNK"         # bloco de dados do arquivo
+    END = "END"             # fim de transferência
+    ACK = "ACK"             # confirmação de recebimento
+    NACK = "NACK"           # negação de recebimento
 
-@dataclass
-class Message:
-    type: MessageType
-    id: str
-    data: Optional[Any] = None
+# classe que representa uma mensagem do protocolo
+class Mensagem:
+    """classe que representa uma mensagem do protocolo"""
     
-    @classmethod
-    def heartbeat(cls, name: str) -> 'Message':
-        return cls(MessageType.HEARTBEAT, "", {"name": name})
+    # inicializa uma mensagem com id, tipo e dados
+    def __init__(self, id: str, tipo: TipoMensagem, dados: Dict[str, Any]):
+        self.id = id
+        self.tipo = tipo
+        self.dados = dados
     
-    @classmethod
-    def talk(cls, msg_id: str, data: str) -> 'Message':
-        return cls(MessageType.TALK, msg_id, {"data": data})
-    
-    @classmethod
-    def file(cls, msg_id: str, filename: str, size: int) -> 'Message':
-        return cls(MessageType.FILE, msg_id, {
-            "filename": filename,
-            "size": size
-        })
-    
-    @classmethod
-    def chunk(cls, msg_id: str, seq: int, data: bytes) -> 'Message':
-        return cls(MessageType.CHUNK, msg_id, {
-            "seq": seq,
-            "data": base64.b64encode(data).decode('utf-8')
-        })
-    
-    @classmethod
-    def end(cls, msg_id: str, file_hash: str) -> 'Message':
-        return cls(MessageType.END, msg_id, {"hash": file_hash})
-    
-    @classmethod
-    def ack(cls, msg_id: str) -> 'Message':
-        return cls(MessageType.ACK, msg_id)
-    
-    @classmethod
-    def nack(cls, msg_id: str, reason: str) -> 'Message':
-        return cls(MessageType.NACK, msg_id, {"reason": reason})
-    
-    def to_json(self) -> str:
+    # converte a mensagem para formato json
+    def para_json(self) -> str:
         return json.dumps({
-            "type": self.type.value,
             "id": self.id,
-            "data": self.data
+            "tipo": self.tipo.value,
+            "dados": self.dados
         })
     
+    # cria uma mensagem a partir de uma string json
     @classmethod
-    def from_json(cls, json_str: str) -> 'Message':
-        data = json.loads(json_str)
+    def de_json(cls, json_str: str) -> 'Mensagem':
+        dados = json.loads(json_str)
         return cls(
-            MessageType(data["type"]),
-            data["id"],
-            data.get("data")
+            id=dados["id"],
+            tipo=TipoMensagem(dados["tipo"]),
+            dados=dados["dados"]
+        )
+    
+    # métodos para criar cada tipo de mensagem
+    @classmethod
+    def heartbeat(cls, nome: str) -> 'Mensagem':
+        """cria uma mensagem de presença"""
+        return cls(
+            id=str(uuid.uuid4()),
+            tipo=TipoMensagem.HEARTBEAT,
+            dados={"nome": nome}
+        )
+    
+    @classmethod
+    def talk(cls, id: str, texto: str) -> 'Mensagem':
+        """cria uma mensagem de texto"""
+        return cls(
+            id=id,
+            tipo=TipoMensagem.TALK,
+            dados={"texto": texto}
+        )
+    
+    @classmethod
+    def file(cls, id: str, nome_arquivo: str, tamanho: int) -> 'Mensagem':
+        """cria uma mensagem de início de transferência de arquivo"""
+        return cls(
+            id=id,
+            tipo=TipoMensagem.FILE,
+            dados={
+                "nome_arquivo": nome_arquivo,
+                "tamanho": tamanho
+            }
+        )
+    
+    @classmethod
+    def chunk(cls, id: str, sequencia: int, dados: bytes) -> 'Mensagem':
+        """cria uma mensagem com bloco de dados do arquivo"""
+        return cls(
+            id=id,
+            tipo=TipoMensagem.CHUNK,
+            dados={
+                "sequencia": sequencia,
+                "dados": base64.b64encode(dados).decode()
+            }
+        )
+    
+    @classmethod
+    def end(cls, id: str, hash_arquivo: str) -> 'Mensagem':
+        """cria uma mensagem de fim de transferência"""
+        return cls(
+            id=id,
+            tipo=TipoMensagem.END,
+            dados={"hash": hash_arquivo}
+        )
+    
+    @classmethod
+    def ack(cls, id: str) -> 'Mensagem':
+        """cria uma mensagem de confirmação"""
+        return cls(
+            id=id,
+            tipo=TipoMensagem.ACK,
+            dados={}
+        )
+    
+    @classmethod
+    def nack(cls, id: str, motivo: str) -> 'Mensagem':
+        """cria uma mensagem de negação"""
+        return cls(
+            id=id,
+            tipo=TipoMensagem.NACK,
+            dados={"motivo": motivo}
         )
 
-def calculate_file_hash(file_path: str) -> str:
-    """Calcula o hash SHA-256 de um arquivo."""
-    sha256_hash = hashlib.sha256()
-    with open(file_path, "rb") as f:
-        for byte_block in iter(lambda: f.read(4096), b""):
-            sha256_hash.update(byte_block)
-    return sha256_hash.hexdigest() 
+# calcula o hash sha-256 de um arquivo
+def calcular_hash_arquivo(caminho_arquivo: str) -> str:
+    """calcula o hash sha-256 de um arquivo"""
+    hash_sha256 = hashlib.sha256()
+    with open(caminho_arquivo, "rb") as f:
+        for bloco in iter(lambda: f.read(4096), b""):
+            hash_sha256.update(bloco)
+    return hash_sha256.hexdigest() 

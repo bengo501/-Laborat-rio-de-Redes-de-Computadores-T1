@@ -3,183 +3,315 @@ import threading
 import time
 import uuid
 import os
-from typing import Dict, Set, Optional
+import hashlib
+import base64
+from typing import Dict, Set, Optional, Tuple, List
 from dataclasses import dataclass
-from protocol import Message, MessageType, calculate_file_hash
+from protocol import Mensagem, TipoMensagem, calcular_hash_arquivo
+from datetime import datetime
 
+# Informações sobre um dispositivo na rede
 @dataclass
-class DeviceInfo:
-    name: str
-    address: tuple
-    last_heartbeat: float
+class InfoDispositivo:
+    nome: str
+    endereco: tuple
+    ultimo_heartbeat: float
 
-class Device:
-    def __init__(self, name: str, port: int = 0):
-        self.name = name
-        self.devices: Dict[str, DeviceInfo] = {}
+class Dispositivo:
+    def __init__(self, nome: str, porta: int = 0):
+        """Inicializa um dispositivo com o nome especificado"""
+        self.nome = nome
+        self.dispositivos: Dict[str, InfoDispositivo] = {}  # Lista de dispositivos conhecidos
+        
+        # Configura socket UDP com broadcast
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-        self.socket.bind(('', port))
-        self.port = self.socket.getsockname()[1]
+        self.socket.bind(('', porta))
+        self.porta = self.socket.getsockname()[1]
         
-        # Para controle de transferência de arquivos
-        self.pending_transfers: Dict[str, Dict] = {}
-        self.received_chunks: Dict[str, Set[int]] = {}
+        # Controle de transferências e mensagens
+        self.transferencias_pendentes: Dict[str, Dict] = {}  # Transferências em andamento
+        self.mensagens_pendentes: Dict[str, Dict] = {}       # Mensagens aguardando ACK
         
-        # Para controle de mensagens pendentes
-        self.pending_messages: Dict[str, Dict] = {}
+        # Inicia threads de execução
+        self.executando = True
+        self.thread_receptor = threading.Thread(target=self._loop_receptor)
+        self.thread_heartbeat = threading.Thread(target=self._loop_heartbeat)
+        self.thread_limpeza = threading.Thread(target=self._loop_limpeza)
+        self.thread_retransmissao = threading.Thread(target=self._loop_retransmissao)
         
-        # Inicia threads
-        self.running = True
-        self.receiver_thread = threading.Thread(target=self._receive_loop)
-        self.heartbeat_thread = threading.Thread(target=self._heartbeat_loop)
-        self.cleanup_thread = threading.Thread(target=self._cleanup_loop)
-        
-        self.receiver_thread.start()
-        self.heartbeat_thread.start()
-        self.cleanup_thread.start()
+        self.thread_receptor.start()
+        self.thread_heartbeat.start()
+        self.thread_limpeza.start()
+        self.thread_retransmissao.start()
     
-    def _receive_loop(self):
-        while self.running:
+    def _loop_receptor(self):
+        """Loop principal de recebimento de mensagens"""
+        while self.executando:
             try:
-                data, addr = self.socket.recvfrom(65535)
-                message = Message.from_json(data.decode())
-                self._handle_message(message, addr)
+                dados, endereco = self.socket.recvfrom(65535)
+                mensagem = Mensagem.de_json(dados.decode())
+                self._processar_mensagem(mensagem, endereco)
             except Exception as e:
                 print(f"Erro ao receber mensagem: {e}")
     
-    def _heartbeat_loop(self):
-        while self.running:
+    def _loop_heartbeat(self):
+        """Loop de envio periódico de heartbeats"""
+        while self.executando:
             try:
-                self._send_heartbeat()
-                time.sleep(5)
+                self._enviar_heartbeat()
+                time.sleep(5)  # Envia a cada 5 segundos
             except Exception as e:
                 print(f"Erro ao enviar heartbeat: {e}")
     
-    def _cleanup_loop(self):
-        while self.running:
+    def _loop_limpeza(self):
+        """Loop de limpeza de dispositivos inativos"""
+        while self.executando:
             try:
-                current_time = time.time()
-                to_remove = []
-                for name, info in self.devices.items():
-                    if current_time - info.last_heartbeat > 10:
-                        to_remove.append(name)
-                for name in to_remove:
-                    del self.devices[name]
+                tempo_atual = time.time()
+                # Remove dispositivos sem heartbeat há mais de 10 segundos
+                para_remover = []
+                for nome, info in self.dispositivos.items():
+                    if tempo_atual - info.ultimo_heartbeat > 10:
+                        para_remover.append(nome)
+                for nome in para_remover:
+                    del self.dispositivos[nome]
                 time.sleep(1)
             except Exception as e:
                 print(f"Erro na limpeza: {e}")
     
-    def _send_heartbeat(self):
-        message = Message.heartbeat(self.name)
-        self._send_broadcast(message)
+    def _loop_retransmissao(self):
+        """Loop de retransmissão de mensagens não confirmadas"""
+        while self.executando:
+            try:
+                tempo_atual = time.time()
+                para_retransmitir = []
+                
+                # Verifica mensagens pendentes
+                for msg_id, info in list(self.mensagens_pendentes.items()):
+                    if tempo_atual - info["timestamp"] > 1.0:  # 1 segundo sem ACK
+                        para_retransmitir.append(info)
+                        info["timestamp"] = tempo_atual
+                        info["tentativas"] += 1
+                        
+                        if info["tentativas"] >= 3:  # Máximo de 3 tentativas
+                            del self.mensagens_pendentes[msg_id]
+                            print(f"Mensagem {msg_id} falhou após 3 tentativas")
+                
+                # Retransmite mensagens
+                for info in para_retransmitir:
+                    self.socket.sendto(info["mensagem"].para_json().encode(), info["endereco"])
+                
+                time.sleep(0.1)
+            except Exception as e:
+                print(f"Erro na retransmissão: {e}")
     
-    def _send_broadcast(self, message: Message):
-        self.socket.sendto(message.to_json().encode(), ('<broadcast>', self.port))
+    def _enviar_heartbeat(self):
+        """Envia mensagem de presença para a rede"""
+        mensagem = Mensagem.heartbeat(self.nome)
+        self._enviar_broadcast(mensagem)
     
-    def _send_to_device(self, device_name: str, message: Message):
-        if device_name in self.devices:
-            self.socket.sendto(message.to_json().encode(), self.devices[device_name].address)
+    def _enviar_broadcast(self, mensagem: Mensagem):
+        """Envia mensagem para todos os dispositivos"""
+        self.socket.sendto(mensagem.para_json().encode(), ('<broadcast>', self.porta))
+    
+    def _enviar_para_dispositivo(self, nome_dispositivo: str, mensagem: Mensagem, tentar_novamente: bool = True) -> bool:
+        """Envia mensagem para um dispositivo específico"""
+        if nome_dispositivo in self.dispositivos:
+            if tentar_novamente:
+                self.mensagens_pendentes[mensagem.id] = {
+                    "mensagem": mensagem,
+                    "endereco": self.dispositivos[nome_dispositivo].endereco,
+                    "timestamp": time.time(),
+                    "tentativas": 0
+                }
+            self.socket.sendto(mensagem.para_json().encode(), self.dispositivos[nome_dispositivo].endereco)
             return True
         return False
     
-    def _handle_message(self, message: Message, addr: tuple):
-        if message.type == MessageType.HEARTBEAT:
-            self._handle_heartbeat(message, addr)
-        elif message.type == MessageType.TALK:
-            self._handle_talk(message, addr)
-        elif message.type == MessageType.FILE:
-            self._handle_file(message, addr)
-        elif message.type == MessageType.CHUNK:
-            self._handle_chunk(message, addr)
-        elif message.type == MessageType.END:
-            self._handle_end(message, addr)
-        elif message.type == MessageType.ACK:
-            self._handle_ack(message)
-        elif message.type == MessageType.NACK:
-            self._handle_nack(message)
+    def _processar_mensagem(self, mensagem: Mensagem, endereco: tuple):
+        """Processa uma mensagem recebida"""
+        if mensagem.tipo == TipoMensagem.HEARTBEAT:
+            self._processar_heartbeat(mensagem, endereco)
+        elif mensagem.tipo == TipoMensagem.TALK:
+            self._processar_talk(mensagem, endereco)
+        elif mensagem.tipo == TipoMensagem.FILE:
+            self._processar_file(mensagem, endereco)
+        elif mensagem.tipo == TipoMensagem.CHUNK:
+            self._processar_chunk(mensagem, endereco)
+        elif mensagem.tipo == TipoMensagem.END:
+            self._processar_end(mensagem, endereco)
+        elif mensagem.tipo == TipoMensagem.ACK:
+            self._processar_ack(mensagem)
+        elif mensagem.tipo == TipoMensagem.NACK:
+            self._processar_nack(mensagem)
     
-    def _handle_heartbeat(self, message: Message, addr: tuple):
-        name = message.data["name"]
-        if name != self.name:  # Ignora próprios heartbeats
-            self.devices[name] = DeviceInfo(name, addr, time.time())
+    def _processar_heartbeat(self, mensagem: Mensagem, endereco: tuple):
+        """Processa mensagem de presença"""
+        nome = mensagem.dados["nome"]
+        if nome != self.nome:  # Ignora próprios heartbeats
+            self.dispositivos[nome] = InfoDispositivo(nome, endereco, time.time())
             # Envia ACK
-            self.socket.sendto(Message.ack(message.id).to_json().encode(), addr)
+            self.socket.sendto(Mensagem.ack(mensagem.id).para_json().encode(), endereco)
     
-    def _handle_talk(self, message: Message, addr: tuple):
-        print(f"\nMensagem recebida de {message.data['data']}")
+    def _processar_talk(self, mensagem: Mensagem, endereco: tuple):
+        """Processa mensagem de texto"""
+        print(f"\nMensagem recebida: {mensagem.dados['texto']}")
         # Envia ACK
-        self.socket.sendto(Message.ack(message.id).to_json().encode(), addr)
+        self.socket.sendto(Mensagem.ack(mensagem.id).para_json().encode(), endereco)
     
-    def _handle_file(self, message: Message, addr: tuple):
-        file_info = message.data
-        self.pending_transfers[message.id] = {
-            "filename": file_info["filename"],
-            "size": file_info["size"],
-            "received_chunks": set(),
-            "sender": addr
+    def _processar_file(self, mensagem: Mensagem, endereco: tuple):
+        """Processa início de transferência de arquivo"""
+        info_arquivo = mensagem.dados
+        self.transferencias_pendentes[mensagem.id] = {
+            "nome_arquivo": info_arquivo["nome_arquivo"],
+            "tamanho": info_arquivo["tamanho"],
+            "chunks_recebidos": set(),
+            "chunks": {},
+            "remetente": endereco
         }
         # Envia ACK
-        self.socket.sendto(Message.ack(message.id).to_json().encode(), addr)
+        self.socket.sendto(Mensagem.ack(mensagem.id).para_json().encode(), endereco)
     
-    def _handle_chunk(self, message: Message, addr: tuple):
-        if message.id in self.pending_transfers:
-            transfer = self.pending_transfers[message.id]
-            seq = message.data["seq"]
-            if seq not in transfer["received_chunks"]:
-                transfer["received_chunks"].add(seq)
-                # Processa o chunk (implementar lógica de salvamento)
-                # Envia ACK
-                self.socket.sendto(Message.ack(message.id).to_json().encode(), addr)
+    def _processar_chunk(self, mensagem: Mensagem, endereco: tuple):
+        """Processa bloco de dados do arquivo"""
+        if mensagem.id in self.transferencias_pendentes:
+            transferencia = self.transferencias_pendentes[mensagem.id]
+            sequencia = mensagem.dados["sequencia"]
+            
+            if sequencia not in transferencia["chunks_recebidos"]:
+                try:
+                    dados_chunk = base64.b64decode(mensagem.dados["dados"])
+                    transferencia["chunks_recebidos"].add(sequencia)
+                    transferencia["chunks"][sequencia] = dados_chunk
+                    
+                    # Verifica se todos os chunks foram recebidos
+                    chunks_esperados = (transferencia["tamanho"] + 4095) // 4096
+                    if len(transferencia["chunks_recebidos"]) == chunks_esperados:
+                        self._finalizar_transferencia(mensagem.id)
+                    
+                    # Envia ACK
+                    self.socket.sendto(Mensagem.ack(mensagem.id).para_json().encode(), endereco)
+                except Exception as e:
+                    print(f"Erro ao processar chunk: {e}")
+                    self.socket.sendto(Mensagem.nack(mensagem.id, str(e)).para_json().encode(), endereco)
     
-    def _handle_end(self, message: Message, addr: tuple):
-        if message.id in self.pending_transfers:
-            transfer = self.pending_transfers[message.id]
-            # Verifica hash e finaliza transferência
-            # Envia ACK ou NACK dependendo do resultado
-            del self.pending_transfers[message.id]
+    def _finalizar_transferencia(self, transferencia_id: str):
+        """Finaliza uma transferência de arquivo"""
+        if transferencia_id in self.transferencias_pendentes:
+            transferencia = self.transferencias_pendentes[transferencia_id]
+            
+            # Reordena os chunks
+            chunks = [transferencia["chunks"][i] for i in sorted(transferencia["chunks"].keys())]
+            dados_arquivo = b"".join(chunks)
+            
+            # Calcula hash
+            hash_arquivo = hashlib.sha256(dados_arquivo).hexdigest()
+            
+            # Salva o arquivo
+            try:
+                with open(transferencia["nome_arquivo"], "wb") as f:
+                    f.write(dados_arquivo)
+                print(f"Arquivo recebido: {transferencia['nome_arquivo']}")
+            except Exception as e:
+                print(f"Erro ao salvar arquivo: {e}")
+            
+            del self.transferencias_pendentes[transferencia_id]
     
-    def _handle_ack(self, message: Message):
-        if message.id in self.pending_messages:
-            # Processa ACK (implementar lógica de confirmação)
-            pass
+    def _processar_end(self, mensagem: Mensagem, endereco: tuple):
+        """Processa fim de transferência"""
+        if mensagem.id in self.transferencias_pendentes:
+            transferencia = self.transferencias_pendentes[mensagem.id]
+            hash_recebido = mensagem.dados["hash"]
+            
+            # Calcula hash do arquivo recebido
+            hash_arquivo = hashlib.sha256(b"".join(transferencia["chunks"][i] for i in sorted(transferencia["chunks"].keys()))).hexdigest()
+            
+            if hash_recebido == hash_arquivo:
+                self.socket.sendto(Mensagem.ack(mensagem.id).para_json().encode(), endereco)
+                print(f"Transferência {mensagem.id} concluída com sucesso")
+            else:
+                self.socket.sendto(Mensagem.nack(mensagem.id, "Hash inválido").para_json().encode(), endereco)
+                print(f"Transferência {mensagem.id} falhou: hash inválido")
     
-    def _handle_nack(self, message: Message):
-        if message.id in self.pending_messages:
-            # Processa NACK (implementar lógica de retransmissão)
-            pass
+    def _processar_ack(self, mensagem: Mensagem):
+        """Processa confirmação de recebimento"""
+        if mensagem.id in self.mensagens_pendentes:
+            del self.mensagens_pendentes[mensagem.id]
     
-    def send_message(self, target_name: str, content: str) -> bool:
-        message_id = str(uuid.uuid4())
-        message = Message.talk(message_id, content)
-        return self._send_to_device(target_name, message)
+    def _processar_nack(self, mensagem: Mensagem):
+        """Processa negação de recebimento"""
+        if mensagem.id in self.mensagens_pendentes:
+            print(f"Recebido NACK para mensagem {mensagem.id}: {mensagem.dados['motivo']}")
+            del self.mensagens_pendentes[mensagem.id]
     
-    def send_file(self, target_name: str, filepath: str) -> bool:
-        if not os.path.exists(filepath):
+    def enviar_mensagem(self, nome_destino: str, texto: str) -> bool:
+        """Envia uma mensagem de texto para outro dispositivo"""
+        msg_id = str(uuid.uuid4())
+        mensagem = Mensagem.talk(msg_id, texto)
+        return self._enviar_para_dispositivo(nome_destino, mensagem)
+    
+    def enviar_arquivo(self, nome_destino: str, caminho_arquivo: str) -> bool:
+        """Inicia transferência de arquivo para outro dispositivo"""
+        if not os.path.exists(caminho_arquivo):
+            print(f"Arquivo não encontrado: {caminho_arquivo}")
             return False
             
-        message_id = str(uuid.uuid4())
-        filesize = os.path.getsize(filepath)
-        filename = os.path.basename(filepath)
+        msg_id = str(uuid.uuid4())
+        tamanho = os.path.getsize(caminho_arquivo)
+        nome_arquivo = os.path.basename(caminho_arquivo)
         
         # Envia mensagem FILE
-        file_message = Message.file(message_id, filename, filesize)
-        if not self._send_to_device(target_name, file_message):
+        mensagem_file = Mensagem.file(msg_id, nome_arquivo, tamanho)
+        if not self._enviar_para_dispositivo(nome_destino, mensagem_file):
             return False
+        
+        # Inicia transferência em chunks
+        try:
+            tamanho_chunk = 4096  # 4KB por chunk
+            total_chunks = (tamanho + tamanho_chunk - 1) // tamanho_chunk
             
-        # Implementar lógica de envio de chunks
-        return True
+            with open(caminho_arquivo, "rb") as f:
+                for sequencia in range(total_chunks):
+                    dados_chunk = f.read(tamanho_chunk)
+                    mensagem_chunk = Mensagem.chunk(msg_id, sequencia, dados_chunk)
+                    self._enviar_para_dispositivo(nome_destino, mensagem_chunk)
+                    
+                    # Mostra progresso simples
+                    progresso = (sequencia + 1) / total_chunks * 100
+                    print(f"\rEnviando arquivo: {progresso:.1f}%", end="")
+                print()  # Nova linha após progresso
+            
+            # Envia mensagem END com hash
+            hash_arquivo = calcular_hash_arquivo(caminho_arquivo)
+            mensagem_end = Mensagem.end(msg_id, hash_arquivo)
+            self._enviar_para_dispositivo(nome_destino, mensagem_end)
+            
+            return True
+        except Exception as e:
+            print(f"Erro ao enviar arquivo: {e}")
+            return False
     
-    def list_devices(self):
-        current_time = time.time()
+    def listar_dispositivos(self):
+        """Lista todos os dispositivos ativos na rede"""
+        tempo_atual = time.time()
         print("\nDispositivos ativos:")
-        for name, info in self.devices.items():
-            age = current_time - info.last_heartbeat
-            print(f"- {name} ({info.address[0]}:{info.address[1]}) - Último heartbeat: {age:.1f}s atrás")
+        if not self.dispositivos:
+            print("Nenhum dispositivo ativo encontrado")
+            return
+            
+        for nome, info in self.dispositivos.items():
+            idade = tempo_atual - info.ultimo_heartbeat
+            print(f"- {nome}")
+            print(f"  Endereço: {info.endereco[0]}:{info.endereco[1]}")
+            print(f"  Último heartbeat: {idade:.1f}s atrás")
+            print()
     
-    def stop(self):
-        self.running = False
+    def parar(self):
+        """Encerra o dispositivo e suas threads"""
+        self.executando = False
         self.socket.close()
-        self.receiver_thread.join()
-        self.heartbeat_thread.join()
-        self.cleanup_thread.join() 
+        self.thread_receptor.join()
+        self.thread_heartbeat.join()
+        self.thread_limpeza.join()
+        self.thread_retransmissao.join() 
