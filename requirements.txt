@@ -1,6 +1,2 @@
-cryptography==42.0.5
-python-dotenv==1.0.1
-# Dependências do projeto
-# Versões específicas para garantir compatibilidade
-typing-extensions==4.5.0
-dataclasses==0.6 
+# Este arquivo está vazio porque todas as dependências necessárias
+# (base64, hashlib, socket, threading, etc.) são módulos padrão do Python 
