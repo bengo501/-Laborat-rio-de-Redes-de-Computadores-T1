@@ -1,0 +1,75 @@
+PASSO A PASSO DAS CAPTURAS PARA O RELATÓRIO
+
+A. CAPTURAS SEM CLUMSY (APENAS WIRESHARK)
+
+1. Descoberta de dispositivos (HEARTBEAT)
+- Ação: Inicie dois ou mais dispositivos na rede.
+- Wireshark:
+  Filtro: udp contains "HEARTBEAT"
+  O que capturar: Pacotes de broadcast com HEARTBEAT, mostrando a descoberta automática.
+
+2. Envio de mensagem TALK
+- Ação: Envie uma mensagem de texto de um dispositivo para outro.
+- Wireshark:
+  Filtro: udp contains "TALK" or udp contains "ACK"
+  O que capturar: Pacote TALK enviado e ACK correspondente.
+
+3. Envio de arquivo (FILE, CHUNK, END)
+- Ação: Envie um arquivo (ex: grande_teste.txt) de um dispositivo para outro.
+- Wireshark:
+  Filtro: udp contains "FILE" or udp contains "CHUNK" or udp contains "END" or udp contains "ACK" or udp contains "NACK"
+  O que capturar: Pacote FILE, vários CHUNK, END, ACKs de cada etapa, e NACK se houver erro.
+
+
+B. CAPTURAS COM CLUMSY (TESTES ADVERSOS)
+
+Antes de cada teste:
+1. Abra o Clumsy, selecione a interface de rede correta.
+2. Marque as opções conforme o cenário abaixo.
+3. Clique em "Start".
+4. Inicie a captura no Wireshark (use os mesmos filtros acima).
+5. Execute o teste (envio de mensagem ou arquivo).
+6. Pare a captura no Wireshark e no Clumsy após o teste.
+
+4. Perda de pacotes
+- Clumsy: Marque Drop e configure para 10%.
+- Wireshark: Filtro: udp contains "CHUNK"
+- O que capturar: Retransmissão de pacotes CHUNK (mesmo ID/seq enviado mais de uma vez), sucesso final da transferência.
+
+5. Duplicação de pacotes
+- Clumsy: Marque Duplicate e configure para 10%.
+- Wireshark: Filtro: udp contains "CHUNK"
+- O que capturar: Pacotes CHUNK duplicados chegando ao destino, logs mostrando que duplicatas são descartadas.
+
+6. Atraso de pacotes
+- Clumsy: Marque Lag e configure para 200ms (ou mais).
+- Wireshark: Filtro: udp contains "CHUNK"
+- O que capturar: Pacotes chegando com atraso (veja timestamps), eventuais retransmissões por timeout.
+
+7. Fora de ordem
+- Clumsy: Marque Out of order e configure para 10%.
+- Wireshark: Filtro: udp contains "CHUNK"
+- O que capturar: Pacotes CHUNK chegando fora de ordem (veja o campo <seq>), logs mostrando que o protocolo aceita e reordena corretamente.
+
+8. Corrupção de pacotes
+- Clumsy: Marque Tamper e configure para 10%.
+- Wireshark: Filtro: udp contains "END" or udp contains "NACK"
+- O que capturar: Pacote END enviado, NACK recebido em resposta (hash inválido), logs mostrando falha de integridade.
+
+9. Cenário combinado (opcional)
+- Clumsy: Marque Drop, Duplicate e Lag juntos (ex: Drop 10%, Duplicate 10%, Lag 200ms).
+- Wireshark: Filtro: udp
+- O que capturar: Retransmissões, duplicatas, atrasos, e sucesso ou falha final.
+
+Resumo dos Filtros para Wireshark:
+- HEARTBEAT: udp contains "HEARTBEAT"
+- TALK: udp contains "TALK" or udp contains "ACK"
+- Arquivo: udp contains "FILE" or udp contains "CHUNK" or udp contains "END" or udp contains "ACK" or udp contains "NACK"
+- CHUNK: udp contains "CHUNK"
+- END/NACK: udp contains "END" or udp contains "NACK"
+- Tudo: udp
+
+Dicas Finais:
+- Salve cada captura com um nome descritivo (ex: normal.pcapng, perda.pcapng, duplicacao.pcapng, etc).
+- Tire prints dos pacotes relevantes e dos detalhes na parte inferior do Wireshark.
+- Inclua prints do Clumsy mostrando as opções ativadas para cada teste. 
