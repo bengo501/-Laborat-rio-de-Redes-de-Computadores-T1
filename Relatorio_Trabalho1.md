@@ -71,6 +71,7 @@ O código está dividido em dois arquivos principais:
 
 - `dispositivo.py`: Implementa toda a lógica do protocolo, comunicação UDP, threads, envio/recebimento de mensagens e arquivos, e mecanismos de confiabilidade.
 - `main.py`: Implementa a interface de linha de comando, permitindo ao usuário listar dispositivos, enviar mensagens e arquivos.
+- `grande_teste.txt`: Arquivo de texto grande para testes de transferência.
 
 ---
 
@@ -107,59 +108,52 @@ A seguir, são apresentados os principais cenários de teste realizados para val
   - Iniciar dois dispositivos.
   - Listar dispositivos ativos.
   - Enviar mensagem TALK.
-  - Enviar arquivo.
+  - Enviar arquivo (ex: `grande_teste.txt`).
 - **Evidências:**  
   - *Inserir prints do Wireshark mostrando HEARTBEAT, TALK, FILE, CHUNK, END, ACK, NACK.*
   - *Inserir prints da interface e dos logs.*
 
-## 4.2 Perda de Pacotes
-- **Objetivo:** Validar a retransmissão automática em caso de perda de pacotes.
-- **Procedimento:**  
-  - Aplicar perda de pacotes com netem:  
-    `sudo tc qdisc add dev eth0 root netem loss 20%`
-  - Enviar arquivo e observar retransmissões.
-- **Evidências:**  
-  - *Inserir prints do Wireshark mostrando retransmissões.*
-  - *Inserir prints dos logs mostrando tentativas e sucesso final.*
+## 4.2 Testes em Condições Adversas (Clumsy e Wireshark)
 
-## 4.3 Duplicação
-- **Objetivo:** Validar o descarte de mensagens/CHUNKs duplicados.
-- **Procedimento:**  
-  - Aplicar duplicação com netem:  
-    `sudo tc qdisc add dev eth0 root netem duplicate 10%`
-  - Enviar arquivo e observar duplicatas.
-- **Evidências:**  
-  - *Inserir prints do Wireshark mostrando duplicatas.*
-  - *Inserir prints dos logs mostrando descarte de duplicatas.*
+Para validar a robustez do protocolo, foram realizados testes com a ferramenta **Clumsy** (Windows) para simular falhas de rede e **Wireshark** para capturar os pacotes.
 
-## 4.4 Reordenação
-- **Objetivo:** Validar a reordenação correta dos blocos de arquivo.
-- **Procedimento:**  
-  - Aplicar reordenação com netem:  
-    `sudo tc qdisc add dev eth0 root netem delay 100ms reorder 30%`
-  - Enviar arquivo e observar blocos fora de ordem.
-- **Evidências:**  
-  - *Inserir prints do Wireshark mostrando pacotes fora de ordem.*
-  - *Inserir prints dos logs mostrando reordenação.*
+### Como usar o Clumsy
 
-## 4.5 Atraso
-- **Objetivo:** Validar o funcionamento do protocolo sob atraso de rede.
-- **Procedimento:**  
-  - Aplicar atraso com netem:  
-    `sudo tc qdisc add dev eth0 root netem delay 200ms`
-  - Enviar mensagem/arquivo.
-- **Evidências:**  
-  - *Inserir prints do Wireshark mostrando atraso.*
-  - *Inserir prints dos logs mostrando espera e sucesso.*
+1. Baixe o Clumsy: https://jagt.github.io/clumsy/
+2. Abra o Clumsy e selecione a interface de rede correta.
+3. Marque as opções conforme o teste desejado:
+   - **Drop:** Simula perda de pacotes (ex: 10%)
+   - **Duplicate:** Simula duplicação de pacotes (ex: 10%)
+   - **Lag:** Simula atraso (ex: 200ms)
+   - **Out of order:** Simula entrega fora de ordem (ex: 10%)
+   - **Tamper:** Simula corrupção de pacotes (ex: 10%)
+4. Clique em Start para ativar as falhas.
+5. Execute os testes normalmente no programa.
+6. Desative o Clumsy após o teste.
 
-## 4.6 Corrupção
-- **Objetivo:** Validar a detecção e descarte de arquivos corrompidos.
-- **Procedimento:**  
-  - Aplicar corrupção com netem:  
-    `sudo tc qdisc add dev eth0 root netem corrupt 2%`
-  - Enviar arquivo.
-- **Evidências:**  
-  - *Inserir prints do Wireshark mostrando NACK e logs de erro de hash.*
+### Exemplos de Cenários para Teste
+
+| Caso de Teste                | Configuração Clumsy         | O que observar/capturar                        |
+|------------------------------|-----------------------------|------------------------------------------------|
+| **Normal**                   | Nenhuma opção marcada       | Transferência sem falhas, tudo rápido           |
+| **Perda de pacotes**         | Drop (10%)                  | Retransmissão automática, sucesso no final      |
+| **Duplicação de pacotes**    | Duplicate (10%)             | Duplicatas descartadas, sem erro no destino     |
+| **Atraso**                   | Lag (200ms ou mais)         | Protocolo espera, pode haver retransmissão      |
+| **Fora de ordem**            | Out of order (10%)          | Blocos fora de ordem aceitos corretamente       |
+| **Corrupção**                | Tamper (10%)                | Arquivo corrompido, NACK enviado, falha         |
+| **Combinado**                | Drop + Lag + Duplicate      | Protocolo lida com múltiplas adversidades       |
+
+### Usando o Wireshark
+
+1. Abra o Wireshark e selecione a interface de rede.
+2. Inicie a captura antes de rodar o programa.
+3. Filtre por porta UDP usada (ex: `udp.port == 5000`).
+4. Salve o arquivo `.pcapng` após o teste.
+
+### Evidências
+- Prints do Clumsy com as opções marcadas.
+- Prints do Wireshark mostrando os pacotes UDP.
+- Prints do terminal mostrando retransmissões, ACKs, NACKs, sucesso ou falha.
 
 ---
 
@@ -184,6 +178,7 @@ O trabalho permitiu compreender na prática o funcionamento de protocolos de red
 - Códigos-fonte do programa.
 - Arquivos de captura do Wireshark (`.pcapng`).
 - Prints de tela e logs relevantes.
+- Arquivo de teste: `grande_teste.txt`.
 
 ---
 
@@ -198,9 +193,9 @@ O trabalho permitiu compreender na prática o funcionamento de protocolos de red
 4. **Demonstração de um teste adverso:**  
    - Exemplo: perda de pacotes, retransmissão e sucesso final.
 5. **Mostre prints/capturas:**  
-   - HEARTBEAT, TALK, FILE, CHUNK, END, ACK, NACK, retransmissão, NACK, etc.
+   - Prints do Clumsy, Wireshark e terminal.
 6. **Conclusão:**  
-   - O protocolo é confiável, funciona mesmo com falhas, aprendizado.
+   - Destaque os aprendizados e resultados.
 
 ---
 

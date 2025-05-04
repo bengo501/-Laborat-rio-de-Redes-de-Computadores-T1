@@ -71,6 +71,45 @@ O protocolo implementa os seguintes tipos de mensagens:
 - Verificação de integridade por hash SHA-256
 - Transferência de arquivos em blocos para suportar arquivos grandes
 
+## Testes em Condições Adversas
+
+Para validar a robustez do protocolo, recomenda-se o uso das ferramentas **Wireshark** (para capturar pacotes) e **Clumsy** (para simular falhas de rede no Windows).
+
+### Como usar o Clumsy
+
+1. Baixe o Clumsy: https://jagt.github.io/clumsy/
+2. Abra o Clumsy e selecione a interface de rede correta.
+3. Marque as opções conforme o teste desejado:
+   - **Drop:** Simula perda de pacotes (ex: 10%)
+   - **Duplicate:** Simula duplicação de pacotes (ex: 10%)
+   - **Lag:** Simula atraso (ex: 200ms)
+   - **Out of order:** Simula entrega fora de ordem (ex: 10%)
+   - **Tamper:** Simula corrupção de pacotes (ex: 10%)
+4. Clique em Start para ativar as falhas.
+5. Execute os testes normalmente no programa.
+6. Desative o Clumsy após o teste.
+
+### Exemplos de Cenários para Teste
+
+- **Normal:** Nenhuma opção marcada (funcionamento padrão)
+- **Perda de pacotes:** Drop 10%
+- **Duplicação:** Duplicate 10%
+- **Atraso:** Lag 200ms
+- **Fora de ordem:** Out of order 10%
+- **Corrupção:** Tamper 10%
+- **Combinado:** Drop + Lag + Duplicate
+
+### Usando o Wireshark
+
+1. Abra o Wireshark e selecione a interface de rede.
+2. Inicie a captura antes de rodar o programa.
+3. Filtre por porta UDP usada (ex: `udp.port == 5000`).
+4. Salve o arquivo `.pcapng` após o teste.
+
+### Arquivo de Teste
+
+Incluído no repositório: `grande_teste.txt` (arquivo de texto grande para testar transferência de arquivos).
+
 ## Limitações
 
 - O programa utiliza broadcast UDP, então todos os dispositivos devem estar na mesma rede local
