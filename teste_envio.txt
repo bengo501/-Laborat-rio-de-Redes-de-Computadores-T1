@@ -1,0 +1,4 @@
+Este é um arquivo de teste para envio pelo protocolo P2P.
+Linha 2: Testando envio de arquivos.
+Linha 3: O envio deve ser confiável e íntegro.
+Linha 4: Fim do arquivo de teste. 
