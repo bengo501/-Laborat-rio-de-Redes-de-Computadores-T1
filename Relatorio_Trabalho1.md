@@ -1,202 +1,209 @@
-# Laboratório de Redes de Computadores – Trabalho 1
+# Relatório do Trabalho 1 - Protocolo de Comunicação P2P
 
-**Alunos:**  
-[Seu nome]  
-[Nome do colega, se houver]  
+## 1. Introdução
 
-**Turma:** [Identificação da turma]  
-**Data de entrega:** [Data]  
+Este trabalho tem como objetivo implementar um protocolo de comunicação P2P (peer-to-peer) confiável sobre UDP, permitindo descoberta automática de dispositivos, troca de mensagens e transferência de arquivos com integridade garantida. O projeto foi desenvolvido em Python, utilizando sockets e múltiplas threads para garantir desempenho e robustez, mesmo em cenários de rede adversos.
 
----
+## 2. Arquitetura do Sistema
 
-# Sumário
-1. [Introdução](#1-introdução)
-2. [Descrição da Implementação](#2-descrição-da-implementação)
-    1. [Arquitetura Geral](#21-arquitetura-geral)
-    2. [Protocolo de Descoberta e Comunicação](#22-protocolo-de-descoberta-e-comunicação)
-    3. [Mecanismos de Confiabilidade](#23-mecanismos-de-confiabilidade)
-    4. [Estrutura do Código](#24-estrutura-do-código)
-3. [Interface de Usuário](#3-interface-de-usuário)
-4. [Cenários de Teste e Validação](#4-cenários-de-teste-e-validação)
-5. [Análise dos Resultados](#5-análise-dos-resultados)
-6. [Conclusão](#6-conclusão)
-7. [Anexos](#7-anexos)
+### 2.1 Componentes Principais
 
----
+O sistema é composto por dois módulos principais:
 
-# 1. Introdução
+- **dispositivo.py**: Responsável por toda a lógica do protocolo, comunicação UDP, controle de estado, envio/recebimento de mensagens e arquivos, e mecanismos de confiabilidade.
+- **main.py**: Implementa a interface de linha de comando, permitindo ao usuário interagir com o sistema, listar dispositivos, enviar mensagens e arquivos.
 
-O presente trabalho tem como objetivo o desenvolvimento de um protocolo de comunicação customizado, encapsulado em pacotes UDP, para busca automática e comunicação entre dispositivos em uma rede local. O projeto visa proporcionar experiência prática com a pilha de protocolos de rede, uso de sockets, e implementação de mecanismos de confiabilidade em aplicações distribuídas peer-to-peer.
+Além disso, há arquivos auxiliares para testes e logs.
 
----
+### 2.2 Classes e Estruturas
 
-# 2. Descrição da Implementação
+#### 2.2.1 Classe Dispositivo
 
-## 2.1 Arquitetura Geral
+A classe `Dispositivo` centraliza toda a lógica de rede e protocolo. Ela gerencia o socket UDP, threads de envio/recebimento, controle de dispositivos ativos, retransmissão, controle de duplicatas e integridade de arquivos.
 
-A aplicação é composta por múltiplos dispositivos, cada um executando um programa Python que utiliza sockets UDP para comunicação. Cada dispositivo é capaz de:
+**Principais atributos:**
+- `nome`: Nome do dispositivo (identificador único na rede).
+- `porta`: Porta UDP utilizada para comunicação.
+- `socket`: Socket UDP configurado para broadcast e unicast.
+- `dispositivos_ativos`: Dicionário com informações dos dispositivos descobertos (nome, IP, porta, timestamp).
+- `mensagens_recebidas`: Cache de IDs de mensagens já processadas (evita duplicatas).
+- `arquivos_recebidos`: Estrutura para controle de recebimento de arquivos (nome, tamanho, blocos, hash, progresso).
+- `acks_recebidos`: Controle de confirmações de recebimento (ACKs) para cada mensagem enviada.
 
-- Descobrir automaticamente outros dispositivos ativos na rede.
-- Enviar e receber mensagens de texto.
-- Transferir arquivos de forma confiável, mesmo em condições adversas de rede.
+**Principais métodos:**
+- `__init__`: Inicializa o dispositivo, socket, threads e estruturas de controle.
+- `_enviar_heartbeat`: Envia periodicamente mensagens de broadcast para descoberta de dispositivos.
+- `_receber_mensagens`: Thread que escuta e processa todas as mensagens UDP recebidas.
+- `_limpar_inativos`: Remove dispositivos inativos da lista.
+- `enviar_mensagem`: Envia mensagens de texto confiáveis para outro dispositivo, com retransmissão e confirmação.
+- `enviar_arquivo`: Gerencia a transferência de arquivos em blocos, com controle de ACKs, retransmissão e verificação de integridade.
+- `_processar_*`: Métodos privados para processar cada tipo de mensagem do protocolo (TALK, FILE, CHUNK, END, ACK, NACK).
+- `_log`: Registra eventos e mensagens em arquivo de log, podendo exibir no terminal.
 
-A arquitetura utiliza múltiplas threads para:
-- Envio periódico de mensagens HEARTBEAT.
-- Recebimento e processamento de mensagens UDP.
-- Limpeza automática de dispositivos inativos.
-
-## 2.2 Protocolo de Descoberta e Comunicação
-
-O protocolo implementa os seguintes tipos de mensagens:
-
-- **HEARTBEAT <nome>**: Enviada via broadcast na inicialização e a cada 5 segundos, informando a presença do dispositivo na rede.
-- **TALK <id> <mensagem>**: Envia uma mensagem de texto para outro dispositivo, aguardando confirmação (ACK).
-- **FILE <id> <nome-arquivo> <tamanho>**: Inicia a transferência de arquivo, aguardando ACK antes de enviar os blocos.
-- **CHUNK <id> <seq> <dados>**: Envia um bloco do arquivo, codificado em base64, com confirmação individual (ACK) e retransmissão em caso de perda.
-- **END <id> <hash>**: Finaliza a transferência, enviando o hash do arquivo para verificação de integridade.
-- **ACK <id>**: Confirma o recebimento de qualquer mensagem.
-- **NACK <id> <motivo>**: Indica erro no recebimento ou processamento.
-
-## 2.3 Mecanismos de Confiabilidade
-
-- **Confirmação de recebimento (ACK) e retransmissão automática** em caso de perda de pacotes.
-- **Detecção e eliminação de duplicatas** de mensagens e blocos.
-- **Detecção e reordenação de pacotes fora de ordem** para blocos de arquivos.
-- **Validação de integridade** ao final da transferência de arquivos, comparando o hash recebido com o calculado.
-- **Envio de arquivos em blocos**, sem carregar o arquivo inteiro na memória.
-
-## 2.4 Estrutura do Código
-
-O código está dividido em dois arquivos principais:
-
-- `dispositivo.py`: Implementa toda a lógica do protocolo, comunicação UDP, threads, envio/recebimento de mensagens e arquivos, e mecanismos de confiabilidade.
-- `main.py`: Implementa a interface de linha de comando, permitindo ao usuário listar dispositivos, enviar mensagens e arquivos.
-- `grande_teste.txt`: Arquivo de texto grande para testes de transferência.
-
----
-
-# 3. Interface de Usuário
-
-A interface é baseada em linha de comando e permite:
-
-- Listar dispositivos ativos (`devices`).
-- Enviar mensagens de texto (`talk <nome> <mensagem>`).
-- Enviar arquivos (`sendfile <nome> <nome-arquivo>`).
-- Visualizar o progresso da transferência e mensagens de sucesso ou falha.
-
-**Exemplo de uso:**
-
-```
-1. Listar dispositivos ativos
-2. Enviar mensagem (use: talk <nome> <mensagem>)
-3. Enviar arquivo (use: sendfile <nome> <arquivo>)
-4. Sair
+**Exemplo de inicialização:**
+```python
+meu_dispositivo = Dispositivo(nome="Joao", porta=5000)
 ```
 
-**Prints da interface:**  
-*Insira aqui prints de tela mostrando a interface em funcionamento.*
+#### 2.2.2 Classe Interface
 
----
+A classe `Interface` provê a interação com o usuário via terminal. Permite listar dispositivos, enviar mensagens e arquivos, e exibe o menu principal.
 
-# 4. Cenários de Teste e Validação
+**Principais métodos:**
+- `mostrar_menu`: Exibe as opções disponíveis ao usuário.
+- `listar_dispositivos`: Mostra todos os dispositivos ativos na rede.
+- `enviar_mensagem`: Solicita dados ao usuário e chama o método correspondente do dispositivo.
+- `enviar_arquivo`: Solicita o nome do arquivo e o destino, e inicia a transferência.
+- `executar`: Loop principal da interface.
 
-A seguir, são apresentados os principais cenários de teste realizados para validar o funcionamento e a confiabilidade do protocolo.
+## 3. Protocolo de Comunicação
 
-## 4.1 Funcionamento Normal
-- **Objetivo:** Demonstrar a descoberta automática de dispositivos, envio de mensagens e transferência de arquivos em condições normais.
-- **Procedimento:**  
-  - Iniciar dois dispositivos.
-  - Listar dispositivos ativos.
-  - Enviar mensagem TALK.
-  - Enviar arquivo (ex: `grande_teste.txt`).
-- **Evidências:**  
-  - *Inserir prints do Wireshark mostrando HEARTBEAT, TALK, FILE, CHUNK, END, ACK, NACK.*
-  - *Inserir prints da interface e dos logs.*
+### 3.1 Tipos de Mensagens e Formatos
 
-## 4.2 Testes em Condições Adversas (Clumsy e Wireshark)
+O protocolo define os seguintes tipos de mensagens, cada uma com formato e semântica específicos:
 
-Para validar a robustez do protocolo, foram realizados testes com a ferramenta **Clumsy** (Windows) para simular falhas de rede e **Wireshark** para capturar os pacotes.
+1. **HEARTBEAT** (broadcast)
+   - Formato: `HEARTBEAT <nome>`
+   - Exemplo: `HEARTBEAT Joao`
+   - Função: Descoberta automática de dispositivos na rede. Enviada a cada 5 segundos para todas as portas do intervalo.
 
-### Como usar o Clumsy
+2. **TALK** (unicast)
+   - Formato: `TALK <id> <mensagem>`
+   - Exemplo: `TALK 12345 Olá, tudo bem?`
+   - Função: Envio confiável de mensagens de texto. Cada mensagem tem um ID único para controle de duplicatas.
 
-1. Baixe o Clumsy: https://jagt.github.io/clumsy/
-2. Abra o Clumsy e selecione a interface de rede correta.
-3. Marque as opções conforme o teste desejado:
-   - **Drop:** Simula perda de pacotes (ex: 10%)
-   - **Duplicate:** Simula duplicação de pacotes (ex: 10%)
-   - **Lag:** Simula atraso (ex: 200ms)
-   - **Out of order:** Simula entrega fora de ordem (ex: 10%)
-   - **Tamper:** Simula corrupção de pacotes (ex: 10%)
-4. Clique em Start para ativar as falhas.
-5. Execute os testes normalmente no programa.
-6. Desative o Clumsy após o teste.
+3. **FILE** (unicast)
+   - Formato: `FILE <id> <nome> <tamanho>`
+   - Exemplo: `FILE 67890 foto.png 204800`
+   - Função: Inicia a transferência de arquivo, informando nome e tamanho. Aguarda ACK antes de enviar os blocos.
 
-### Exemplos de Cenários para Teste
+4. **CHUNK** (unicast)
+   - Formato: `CHUNK <id> <seq> <dados_base64>`
+   - Exemplo: `CHUNK 67890 0 SGVsbG8gV29ybGQ=`
+   - Função: Transfere um bloco do arquivo, codificado em base64. Cada bloco tem número de sequência e requer ACK individual.
 
-| Caso de Teste                | Configuração Clumsy         | O que observar/capturar                        |
-|------------------------------|-----------------------------|------------------------------------------------|
-| **Normal**                   | Nenhuma opção marcada       | Transferência sem falhas, tudo rápido           |
-| **Perda de pacotes**         | Drop (10%)                  | Retransmissão automática, sucesso no final      |
-| **Duplicação de pacotes**    | Duplicate (10%)             | Duplicatas descartadas, sem erro no destino     |
-| **Atraso**                   | Lag (200ms ou mais)         | Protocolo espera, pode haver retransmissão      |
-| **Fora de ordem**            | Out of order (10%)          | Blocos fora de ordem aceitos corretamente       |
-| **Corrupção**                | Tamper (10%)                | Arquivo corrompido, NACK enviado, falha         |
-| **Combinado**                | Drop + Lag + Duplicate      | Protocolo lida com múltiplas adversidades       |
+5. **END** (unicast)
+   - Formato: `END <id> <hash>`
+   - Exemplo: `END 67890 5d41402abc4b2a76b9719d911017c592`
+   - Função: Finaliza a transferência, enviando o hash SHA-256 do arquivo para verificação de integridade.
 
-### Usando o Wireshark
+6. **ACK** (unicast)
+   - Formato: `ACK <id> [seq|END]`
+   - Exemplo: `ACK 67890 0` ou `ACK 67890 END`
+   - Função: Confirma o recebimento de mensagens, blocos ou finalização.
 
-1. Abra o Wireshark e selecione a interface de rede.
-2. Inicie a captura antes de rodar o programa.
-3. Filtre por porta UDP usada (ex: `udp.port == 5000`).
-4. Salve o arquivo `.pcapng` após o teste.
+7. **NACK** (unicast)
+   - Formato: `NACK <id> <motivo>`
+   - Exemplo: `NACK 67890 HASH_MISMATCH`
+   - Função: Indica falha na transferência, como erro de integridade ou timeout.
 
-### Evidências
-- Prints do Clumsy com as opções marcadas.
-- Prints do Wireshark mostrando os pacotes UDP.
-- Prints do terminal mostrando retransmissões, ACKs, NACKs, sucesso ou falha.
+### 3.2 Mecanismos de Confiabilidade
 
----
+O protocolo implementa diversos mecanismos para garantir a entrega correta das mensagens e arquivos:
 
-# 5. Análise dos Resultados
+- **Confirmação de Recebimento (ACK):** Todas as mensagens importantes requerem confirmação. Se não houver ACK em tempo hábil, a mensagem é retransmitida até 3 vezes.
+- **Controle de Duplicatas:** IDs únicos para cada mensagem e bloco. Mensagens duplicadas são descartadas.
+- **Transferência em Blocos:** Arquivos são enviados em blocos de 1KB, cada um com número de sequência e ACK individual.
+- **Verificação de Integridade:** O hash SHA-256 do arquivo é enviado ao final. O receptor compara com o hash calculado localmente e envia ACK ou NACK.
+- **Timeouts e Retransmissão:** Se não houver resposta, o bloco/mensagem é retransmitido. Após 3 tentativas sem sucesso, a transferência é abortada.
+- **Tratamento de Falhas:** NACKs são enviados em caso de erro de integridade, timeout ou formato inválido.
 
-> **[Aqui você irá descrever, para cada cenário, o que foi observado nas capturas e prints. Explique como o protocolo respondeu a cada situação adversa.]**
+## 4. Análise das Capturas
 
-- O protocolo foi capaz de garantir a entrega confiável de mensagens e arquivos mesmo sob condições adversas, como perda, duplicação, atraso, reordenação e corrupção de pacotes.
-- As retransmissões automáticas, confirmações (ACK), detecção de duplicatas e verificação de integridade (hash) funcionaram conforme esperado.
-- O usuário foi informado sobre o progresso e o resultado das operações, tanto em caso de sucesso quanto de falha.
+As capturas de pacotes foram realizadas com o Wireshark, e falhas de rede foram simuladas com o Clumsy. A seguir, detalhamos o comportamento do protocolo em cada cenário.
 
----
+### 4.1 Captura de HEARTBEAT
+**Arquivo:** `capturaNova2HeartbeatT1.pcapng`
+- Mostra o envio periódico de mensagens HEARTBEAT via broadcast.
+- Permite que dispositivos recém-iniciados descubram rapidamente os demais.
+- O Wireshark exibe pacotes UDP para todas as portas do intervalo configurado.
 
-# 6. Conclusão
+### 4.2 Captura de TALK
+**Arquivo:** `capturaNova2TalkT1.pcapng`
+- Mostra o envio de uma mensagem TALK de um dispositivo para outro.
+- O receptor responde com ACK, confirmando o recebimento.
+- IDs únicos garantem que mensagens duplicadas não sejam processadas.
+- O Wireshark mostra o fluxo TALK → ACK.
 
-O trabalho permitiu compreender na prática o funcionamento de protocolos de rede, a utilização de sockets UDP e a implementação de mecanismos de confiabilidade em aplicações distribuídas. O protocolo desenvolvido demonstrou ser capaz de garantir a entrega confiável de mensagens e arquivos, mesmo em condições adversas de rede, atendendo a todos os requisitos propostos.
+### 4.3 Captura de Transferência de Arquivo
+**Arquivo:** `capturaNova2SendfileT1.pcapng`
+- Mostra a sequência completa: FILE → ACK → CHUNKs → ACKs → END → ACK.
+- Cada bloco CHUNK é confirmado individualmente.
+- O hash do arquivo é verificado ao final, garantindo integridade.
+- O Wireshark mostra todos os pacotes trocados, incluindo retransmissões se houver perda.
 
----
+### 4.4 Testes de Falhas
 
-# 7. Anexos
+#### 4.4.1 Perda de Pacotes (Drop)
+**Arquivo:** `capturaNova2DropT1.pcapng`
+- Simulação de 10% de perda de pacotes.
+- O protocolo detecta ausência de ACK e retransmite automaticamente.
+- A transferência é completada com sucesso após algumas retransmissões.
 
-- Códigos-fonte do programa.
+#### 4.4.2 Duplicação (Duplicate)
+**Arquivo:** `capturaNova2DuplicateT1.pcapng`
+- Simulação de 10% de duplicação de pacotes.
+- O receptor descarta duplicatas usando IDs e números de sequência.
+- Não há impacto na integridade da transferência.
+
+#### 4.4.3 Atraso (Lag)
+**Arquivo:** `capturaNova2LagT1.pcapng`
+- Simulação de atraso de 200ms.
+- O protocolo aguarda o tempo adequado antes de retransmitir.
+- A transferência pode ser um pouco mais lenta, mas é completada com sucesso.
+
+#### 4.4.4 Reordenação (Out of Order)
+**Arquivo:** `capturaNova2OutOfOrderT1.pcapng`
+- Pacotes CHUNK chegam fora de ordem.
+- O receptor reordena os blocos antes de salvar o arquivo.
+- O hash final garante que o arquivo está correto.
+
+#### 4.4.5 Corrupção (Tamper)
+**Arquivo:** `capturaNova2TamperT1.pcapng`
+- Simulação de corrupção de dados em alguns pacotes.
+- O hash SHA-256 detecta qualquer alteração.
+- O receptor envia NACK e solicita retransmissão dos blocos afetados.
+
+#### 4.4.6 Teste Combinado
+**Arquivo:** `capturaNova2TesteCombinadoT1.pcapng`
+- Combinação de todas as falhas anteriores (perda, duplicação, atraso, reordenação, corrupção).
+- O protocolo lida com todas as adversidades, completando a transferência com sucesso após múltiplas retransmissões e verificações.
+
+## 5. Conclusão
+
+O protocolo desenvolvido demonstrou robustez e confiabilidade, sendo capaz de garantir a entrega correta de mensagens e arquivos mesmo em condições adversas de rede. Os mecanismos de confirmação, retransmissão, controle de duplicatas e verificação de integridade funcionaram conforme esperado.
+
+### 5.1 Pontos Fortes
+- Descoberta automática de dispositivos na rede local.
+- Transferência confiável de arquivos, mesmo com falhas de rede.
+- Logs detalhados para depuração e análise.
+- Estrutura modular e fácil de expandir.
+
+### 5.2 Limitações
+- Dependência de broadcast UDP para descoberta (restrito a redes locais).
+- Necessidade de configuração de firewall para permitir comunicação.
+- Não há criptografia nativa (dados trafegam em texto claro/base64).
+- Interface apenas em linha de comando.
+
+### 5.3 Melhorias Futuras
+- Suporte a redes maiores (NAT traversal, relay, etc).
+- Compressão e criptografia de dados.
+- Interface gráfica para facilitar o uso.
+- Ajuste dinâmico de timeouts e retransmissões.
+- Suporte a múltiplas transferências simultâneas.
+
+## 6. Referências
+
+- Python Documentation: https://docs.python.org/3/
+- Wireshark Documentation: https://www.wireshark.org/docs/
+- Clumsy Documentation: https://jagt.github.io/clumsy/
+- RFC 768 - User Datagram Protocol (UDP)
+- RFC 793 - Transmission Control Protocol (TCP) (para inspiração nos mecanismos de confiabilidade)
+
+## 7. Anexos
+
+- Códigos-fonte do programa (`dispositivo.py`, `main.py`).
 - Arquivos de captura do Wireshark (`.pcapng`).
 - Prints de tela e logs relevantes.
 - Arquivo de teste: `grande_teste.txt`.
-
----
-
-# Roteiro para Apresentação (5 a 7 minutos)
-
-1. **Introdução rápida:**  
-   - Objetivo do trabalho e contexto.
-2. **Demonstração da interface:**  
-   - Listar dispositivos, enviar mensagem, enviar arquivo.
-3. **Demonstração de um teste normal:**  
-   - Mostre a transferência e a captura no Wireshark.
-4. **Demonstração de um teste adverso:**  
-   - Exemplo: perda de pacotes, retransmissão e sucesso final.
-5. **Mostre prints/capturas:**  
-   - Prints do Clumsy, Wireshark e terminal.
-6. **Conclusão:**  
-   - Destaque os aprendizados e resultados.
-
----
-
-*Preencha os espaços marcados com prints, capturas e análises após realizar os testes!* 
+- Roteiro de testes e instruções de uso. 

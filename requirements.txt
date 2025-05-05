@@ -1,2 +1,0 @@
-# Este arquivo está vazio porque todas as dependências necessárias
-# (base64, hashlib, socket, threading, etc.) são módulos padrão do Python 

@@ -1,117 +1,148 @@
-# Protocolo de Comunicação P2P
+# Laboratório de Redes de Computadores - Trabalho 1
 
-Este projeto implementa um protocolo de comunicação customizado encapsulado em pacotes UDP para busca automática de dispositivos em uma topologia de rede.
+## Descrição
+Este trabalho implementa um protocolo de comunicação P2P (peer-to-peer) baseado em UDP para descoberta de dispositivos e transferência confiável de mensagens e arquivos. O protocolo suporta:
+
+- Descoberta automática de dispositivos na rede local via broadcast
+- Comunicação confiável entre pares
+- Transferência de arquivos com verificação de integridade
+- Tratamento de perdas, duplicações e reordenação de pacotes
+- Logs detalhados para análise e depuração
+
+## Requisitos
+- Python 3.6 ou superior
+- Sistema operacional Windows, Linux ou macOS
+- Acesso à rede local
+- Permissões para abrir portas UDP (5000-5010)
+
+## Instalação
+1. Clone o repositório:
+```bash
+git clone https://github.com/seu-usuario/Laboratorio-Redes-T1.git
+cd Laboratorio-Redes-T1
+```
+
+2. Certifique-se de ter o Python instalado:
+```bash
+python --version
+```
+
+## Como Executar
+1. Abra dois ou mais terminais
+2. Em cada terminal, execute o programa com um nome e porta diferentes:
+```bash
+# Terminal 1
+python main.py dispositivo1 5000
+
+# Terminal 2
+python main.py dispositivo2 5001
+```
 
 ## Funcionalidades
 
-- Descoberta automática de dispositivos na rede através de mensagens HEARTBEAT
-- Envio de mensagens de texto entre dispositivos
-- Transferência confiável de arquivos com verificação de integridade
-- Interface de linha de comando interativa
+### Descoberta de Dispositivos
+- Os dispositivos enviam HEARTBEATs a cada 5 segundos via broadcast
+- Dispositivos inativos são removidos após 10 segundos sem heartbeat
+- Lista de dispositivos ativos é atualizada automaticamente
 
-## Requisitos
+### Envio de Mensagens
+- Comando: `talk <nome> <mensagem>`
+- Exemplo: `talk dispositivo2 Olá, como vai?`
+- Confirmação de recebimento via ACK
+- Retransmissão automática em caso de falha
 
-- Python 3.6 ou superior
-- Não são necessárias bibliotecas externas além da biblioteca padrão do Python
+### Transferência de Arquivos
+- Comando: `sendfile <nome> <arquivo>`
+- Exemplo: `sendfile dispositivo2 documento.txt`
+- Transferência em blocos de 1KB
+- Verificação de integridade via hash SHA-256
+- Confirmação de cada bloco via ACK
+- Retransmissão automática em caso de falha
 
-## Como usar
+## Logs e Depuração
+- Logs detalhados são salvos em arquivos:
+  - `logs_dispositivo.log`: Logs do dispositivo
+  - `logs_interface.log`: Logs da interface
+- Mensagens importantes são exibidas no terminal
+- Logs incluem timestamps e níveis de severidade
 
-1. Inicie o programa em cada dispositivo que deseja participar da rede:
+## Testes e Simulação de Falhas
+Para testar o protocolo em condições adversas:
 
-```bash
-python main.py <nome_dispositivo> <porta>
-```
+1. Use o Wireshark para capturar pacotes:
+   - Filtro: `udp port 5000-5010`
+   - Observe HEARTBEATs (broadcast) e mensagens unicast
 
-Por exemplo:
-```bash
-python main.py dispositivo1 5000
-```
+2. Use o Clumsy para simular falhas:
+   - Download: [Clumsy](https://jagt.github.io/clumsy/)
+   - Configure para:
+     - Perda de pacotes (10-20%)
+     - Duplicação (5-10%)
+     - Atraso (100-200ms)
+     - Reordenação (5-10%)
 
-2. Comandos disponíveis:
+## Protocolo
 
-- `devices`: Lista todos os dispositivos ativos na rede
-- `talk <nome_dispositivo> <mensagem>`: Envia uma mensagem para um dispositivo específico
-- `sendfile <nome_dispositivo> <caminho_arquivo>`: Envia um arquivo para um dispositivo específico
-- `quit`: Sai do programa
-
-## Detalhes do Protocolo
-
-O protocolo implementa os seguintes tipos de mensagens:
-
-1. HEARTBEAT
-   - Enviado a cada 5 segundos
+### Mensagens
+1. **HEARTBEAT** (broadcast)
    - Formato: `HEARTBEAT <nome>`
+   - Enviado a cada 5 segundos
+   - Usado para descoberta de dispositivos
 
-2. TALK
-   - Para envio de mensagens de texto
-   - Formato: `TALK <id> <dados>`
-   - Requer confirmação (ACK)
+2. **TALK** (unicast)
+   - Formato: `TALK <id> <mensagem>`
+   - Requer ACK de confirmação
+   - ID único para evitar duplicatas
 
-3. FILE
+3. **FILE** (unicast)
+   - Formato: `FILE <id> <nome> <tamanho>`
    - Inicia transferência de arquivo
-   - Formato: `FILE <id> <nome-arquivo> <tamanho>`
-   - Requer confirmação (ACK)
+   - Requer ACK de confirmação
 
-4. CHUNK
-   - Transfere parte de um arquivo
-   - Formato: `CHUNK <id> <seq> <dados>`
-   - Requer confirmação (ACK)
+4. **CHUNK** (unicast)
+   - Formato: `CHUNK <id> <seq> <dados_base64>`
+   - Transfere bloco do arquivo
+   - Requer ACK de confirmação
 
-5. END
-   - Finaliza transferência de arquivo
+5. **END** (unicast)
    - Formato: `END <id> <hash>`
-   - Requer confirmação (ACK/NACK)
+   - Finaliza transferência
+   - Verifica integridade via hash
 
-## Mecanismos de Confiabilidade
+6. **ACK** (unicast)
+   - Formato: `ACK <id> [seq|END]`
+   - Confirma recebimento
 
-- Confirmação de recebimento (ACK) para todas as mensagens
-- Retransmissão automática em caso de perda de pacotes
-- Detecção e eliminação de mensagens duplicadas
-- Ordenação correta de chunks de arquivo
-- Verificação de integridade por hash SHA-256
-- Transferência de arquivos em blocos para suportar arquivos grandes
+7. **NACK** (unicast)
+   - Formato: `NACK <id> <motivo>`
+   - Indica falha na transferência
 
-## Testes em Condições Adversas
+## Solução de Problemas
 
-Para validar a robustez do protocolo, recomenda-se o uso das ferramentas **Wireshark** (para capturar pacotes) e **Clumsy** (para simular falhas de rede no Windows).
+### Problemas Comuns
+1. **Só vejo HEARTBEAT no Wireshark**
+   - Verifique se está capturando na interface correta
+   - Confirme que o firewall permite tráfego UDP
+   - Use filtro `udp port 5000-5010`
 
-### Como usar o Clumsy
+2. **Transferência de arquivo falha**
+   - Verifique permissões de arquivo
+   - Confirme espaço em disco
+   - Monitore logs para identificar erro específico
 
-1. Baixe o Clumsy: https://jagt.github.io/clumsy/
-2. Abra o Clumsy e selecione a interface de rede correta.
-3. Marque as opções conforme o teste desejado:
-   - **Drop:** Simula perda de pacotes (ex: 10%)
-   - **Duplicate:** Simula duplicação de pacotes (ex: 10%)
-   - **Lag:** Simula atraso (ex: 200ms)
-   - **Out of order:** Simula entrega fora de ordem (ex: 10%)
-   - **Tamper:** Simula corrupção de pacotes (ex: 10%)
-4. Clique em Start para ativar as falhas.
-5. Execute os testes normalmente no programa.
-6. Desative o Clumsy após o teste.
+3. **Dispositivos não se encontram**
+   - Verifique se estão na mesma rede
+   - Confirme se broadcast está funcionando
+   - Verifique logs para HEARTBEATs
 
-### Exemplos de Cenários para Teste
+### Configuração do Firewall
+No Windows:
+1. Abra "Firewall do Windows com Segurança Avançada"
+2. Crie regra de entrada para UDP 5000-5010
+3. Permita tráfego de/para programas Python
 
-- **Normal:** Nenhuma opção marcada (funcionamento padrão)
-- **Perda de pacotes:** Drop 10%
-- **Duplicação:** Duplicate 10%
-- **Atraso:** Lag 200ms
-- **Fora de ordem:** Out of order 10%
-- **Corrupção:** Tamper 10%
-- **Combinado:** Drop + Lag + Duplicate
+## Contribuições
+Contribuições são bem-vindas! Por favor, abra uma issue ou pull request.
 
-### Usando o Wireshark
-
-1. Abra o Wireshark e selecione a interface de rede.
-2. Inicie a captura antes de rodar o programa.
-3. Filtre por porta UDP usada (ex: `udp.port == 5000`).
-4. Salve o arquivo `.pcapng` após o teste.
-
-### Arquivo de Teste
-
-Incluído no repositório: `grande_teste.txt` (arquivo de texto grande para testar transferência de arquivos).
-
-## Limitações
-
-- O programa utiliza broadcast UDP, então todos os dispositivos devem estar na mesma rede local
-- A porta especificada deve estar disponível para uso
-- Arquivos com o mesmo nome serão sobrescritos ao serem recebidos 
+## Licença
+Este projeto está licenciado sob a MIT License - veja o arquivo LICENSE para detalhes. 
