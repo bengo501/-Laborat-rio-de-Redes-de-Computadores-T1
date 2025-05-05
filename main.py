@@ -6,6 +6,17 @@ import time
 import os
 # importa a classe Dispositivo para criar e gerenciar o dispositivo p2p
 from dispositivo import Dispositivo
+# importa logging para gerenciar logs
+import logging
+
+# configura o logging para salvar em arquivo
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler("logs_interface.log", encoding="utf-8"),
+    ]
+)
 
 # classe responsável pela interface de usuário no terminal
 class Interface:
@@ -13,6 +24,7 @@ class Interface:
     def __init__(self, dispositivo: Dispositivo):
         self.dispositivo = dispositivo
         self.running = True
+        logging.info("Interface de usuário inicializada")
 
     # limpa a tela do terminal, compatível com windows e linux
     def limpar_tela(self):
@@ -80,6 +92,7 @@ class Interface:
             print("\n" + "-" * 50)
             input("\nPressione Enter para continuar...")
         except Exception as e:
+            logging.error(f"Erro ao enviar mensagem: {e}")
             print(f"\nErro ao enviar mensagem: {e}")
             input("\nPressione Enter para continuar...")
 
@@ -95,7 +108,7 @@ class Interface:
             print(f"- {nome}")
         print("\nDigite o comando no formato: sendfile <nome> <arquivo>")
         print("Exemplo: sendfile dispositivo1 documento.txt")
-        print("\nO arquivo deve estar no diretório atual ou fornecer o caminho completo.")
+        print("\nO arquivo deve estar no diretório atual ou fornecer o caminho completo")
         try:
             comando = input("\n> ")
             partes = comando.strip().split()
@@ -114,76 +127,63 @@ class Interface:
                 print(f"\nErro: Arquivo {caminho_arquivo} não encontrado")
                 input("\nPressione Enter para continuar...")
                 return
-            print(f"\nIniciando transferência do arquivo {caminho_arquivo} para {nome_destino}...")
-            print("Aguarde enquanto o arquivo é transferido...")
             # chama método do dispositivo para enviar arquivo
             if self.dispositivo.enviar_arquivo(nome_destino, caminho_arquivo):
-                print(f"\nTransferência concluída com sucesso!")
+                print(f"\nArquivo enviado com sucesso para {nome_destino}")
             else:
-                print(f"\nErro: Falha na transferência do arquivo")
+                print(f"\nFalha ao enviar arquivo para {nome_destino}")
             print("\n" + "-" * 50)
             input("\nPressione Enter para continuar...")
         except Exception as e:
+            logging.error(f"Erro ao enviar arquivo: {e}")
             print(f"\nErro ao enviar arquivo: {e}")
             input("\nPressione Enter para continuar...")
 
-    # inicia a interface e gerencia o menu principal
-    def iniciar(self):
-        self.limpar_tela()
-        print("\n" + "="*50)
-        print("BEM-VINDO AO SISTEMA DE COMUNICAÇÃO P2P".center(50))
-        print("="*50)
-        input("\nPressione Enter para continuar...")
+    # loop principal da interface, exibe menu e processa comandos
+    def executar(self):
         while self.running:
             self.mostrar_menu()
             try:
-                opcao = int(input("\nDigite o número da opção desejada: "))
-                if opcao == 1:
+                opcao = input("\nEscolha uma opção (1-4): ")
+                if opcao == "1":
                     self.listar_dispositivos()
-                elif opcao == 2:
+                elif opcao == "2":
                     self.enviar_mensagem()
-                elif opcao == 3:
+                elif opcao == "3":
                     self.enviar_arquivo()
-                elif opcao == 4:
-                    print("\nEncerrando programa...")
-                    self.dispositivo.encerrar()
+                elif opcao == "4":
                     self.running = False
                 else:
-                    print("\nOpção inválida! Digite um número entre 1 e 4.")
+                    print("\nOpção inválida!")
                     input("\nPressione Enter para continuar...")
-            except ValueError:
-                print("\nOpção inválida! Digite um número.")
-                input("\nPressione Enter para continuar...")
-            except KeyboardInterrupt:
-                print("\nEncerrando programa...")
-                self.dispositivo.encerrar()
-                self.running = False
             except Exception as e:
+                logging.error(f"Erro na interface: {e}")
                 print(f"\nErro: {e}")
                 input("\nPressione Enter para continuar...")
+        logging.info("Interface encerrada")
 
-# função principal que inicia o programa, recebe nome e porta como argumentos
+# função principal, cria dispositivo e interface
 def main():
     if len(sys.argv) != 3:
-        print("Uso: python main.py <nome_dispositivo> <porta>")
-        sys.exit(1)
+        print("Uso: python main.py <nome> <porta>")
+        print("Exemplo: python main.py dispositivo1 5000")
+        return
     nome = sys.argv[1]
     try:
         porta = int(sys.argv[2])
     except ValueError:
-        print("Erro: A porta deve ser um número inteiro")
-        sys.exit(1)
+        print("Porta deve ser um número inteiro")
+        return
     try:
         dispositivo = Dispositivo(nome, porta)
         interface = Interface(dispositivo)
-        interface.iniciar()
-    except KeyboardInterrupt:
-        print("\nEncerrando...")
-        dispositivo.encerrar()
+        interface.executar()
     except Exception as e:
-        print(f"Erro: {e}")
-        sys.exit(1)
+        logging.error(f"Erro fatal: {e}")
+        print(f"Erro fatal: {e}")
+    finally:
+        if 'dispositivo' in locals():
+            dispositivo.encerrar()
 
-# executa a função principal se o arquivo for executado diretamente
-if __name__ == '__main__':
+if __name__ == "__main__":
     main() 

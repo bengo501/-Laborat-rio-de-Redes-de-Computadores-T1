@@ -16,6 +16,17 @@ import os
 from typing import Dict, List, Optional
 # importa datetime para registrar logs com data e hora
 from datetime import datetime
+# importa logging para gerenciar logs
+import logging
+
+# configura o logging para salvar em arquivo
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler(f"logs_dispositivo.log", encoding="utf-8"),
+    ]
+)
 
 # tamanho do bloco para transferência de arquivos (1KB)
 CHUNK_SIZE = 1024
@@ -46,8 +57,6 @@ class Dispositivo:
         self.acks_recebidos: Dict[str, float] = {}
         # estado atual de envio de arquivo
         self.estado_envio_arquivo: Optional[dict] = None
-        # abre arquivo de log para registrar eventos importantes
-        self.log_file = open(f"logs_{nome}.txt", "w")
         # registra no log a inicialização do dispositivo
         self._log(f"Dispositivo {nome} inicializado na porta {porta}")
         self._log(f"Usando endereço de broadcast: {self.broadcast_address}")
@@ -62,29 +71,22 @@ class Dispositivo:
         self.thread_receiver.start()
         self.thread_cleanup.start()
 
-    # registra mensagem no log com timestamp, pode exibir na tela se mostrar_tela for True
-    def _log(self, mensagem: str, mostrar_tela: bool = True):
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")
-        log_entry = f"[{timestamp}] {mensagem}\n"
+    # registra mensagem no log com timestamp
+    def _log(self, mensagem: str, mostrar_tela: bool = False):
+        logging.info(mensagem)
         if mostrar_tela:
-            print(log_entry.strip())
-        self.log_file.write(log_entry)
-        self.log_file.flush()
+            print(mensagem)
 
     # envia heartbeat para todos os dispositivos da rede a cada 5 segundos
     def _enviar_heartbeat(self):
         while self.running:
-            # monta a mensagem heartbeat com o nome do dispositivo
             mensagem = f"HEARTBEAT {self.nome}"
             try:
-                # envia heartbeat para todas as portas do intervalo 5000-5010
                 for porta in range(5000, 5010):
                     self.socket.sendto(mensagem.encode(), (self.broadcast_address, porta))
-                    # registra no log o envio do heartbeat
                     self._log(f"HEARTBEAT enviado para {self.broadcast_address}:{porta}", mostrar_tela=False)
             except Exception as e:
                 self._log(f"ERRO ao enviar HEARTBEAT: {e}")
-            # espera 5 segundos antes de enviar o próximo heartbeat
             time.sleep(5)
 
     # remove dispositivos inativos da lista se não receber heartbeat em 10 segundos
@@ -107,6 +109,7 @@ class Dispositivo:
             try:
                 # recebe dados e endereço de origem
                 dados, endereco = self.socket.recvfrom(65536)
+                self._log(f"DEBUG: Pacote recebido de {endereco}: {dados}", mostrar_tela=False)  # depuração
                 mensagem = dados.decode()
                 self._log(f"RECEBIDO de {endereco}: {mensagem}", mostrar_tela=False)
                 partes = mensagem.split()
@@ -152,16 +155,16 @@ class Dispositivo:
 
     # processa mensagem TALK, exibe mensagem recebida e envia ACK
     def _processar_talk(self, partes: List[str], endereco):
+        self._log(f"DEBUG: Entrou em _processar_talk com partes={partes} de {endereco}")
         if len(partes) < 3:
             return
         id_msg = partes[1]
         mensagem = " ".join(partes[2:])
-        # evita processar mensagens duplicadas
         if id_msg not in self.mensagens_recebidas.get("TALK", set()):
             print(f"\nMensagem recebida: {mensagem}")
-            self._log(f"Mensagem recebida de {endereco[0]}: {mensagem}", mostrar_tela=False)
+            self._log(f"Mensagem recebida de {endereco[0]}: {mensagem}")
             self.mensagens_recebidas.setdefault("TALK", set()).add(id_msg)
-        # envia ACK para confirmar recebimento
+        # envia ACK para confirmar recebimento (sempre unicast para quem enviou)
         resposta = f"ACK {id_msg}"
         self.socket.sendto(resposta.encode(), endereco)
 
@@ -173,7 +176,7 @@ class Dispositivo:
         ip, porta, _ = self.dispositivos_ativos[nome_destino]
         id_msg = f"{self.nome}_{int(time.time())}"
         mensagem_completa = f"TALK {id_msg} {mensagem}"
-        self._log(f"ENVIANDO TALK para {ip}:{porta} (ID: {id_msg}): {mensagem}", mostrar_tela=False)
+        self._log(f"ENVIANDO TALK para {ip}:{porta} (ID: {id_msg}): {mensagem}")
         max_tentativas = 3
         tentativa = 0
         while tentativa < max_tentativas:
@@ -184,14 +187,14 @@ class Dispositivo:
                     dados, _ = self.socket.recvfrom(1024)
                     resposta = dados.decode().split()
                     if len(resposta) >= 2 and resposta[0] == "ACK" and resposta[1] == id_msg:
-                        self._log(f"ACK recebido para mensagem {id_msg}", mostrar_tela=False)
+                        self._log(f"ACK recebido para mensagem {id_msg}")
                         return
             except socket.timeout:
                 tentativa += 1
                 if tentativa < max_tentativas:
-                    self._log(f"Tentativa {tentativa + 1} de enviar mensagem {id_msg}...", mostrar_tela=False)
+                    self._log(f"Tentativa {tentativa + 1} de enviar mensagem {id_msg}...")
                 else:
-                    self._log(f"Falha ao enviar mensagem {id_msg} após {max_tentativas} tentativas", mostrar_tela=False)
+                    self._log(f"Falha ao enviar mensagem {id_msg} após {max_tentativas} tentativas")
             finally:
                 self.socket.settimeout(None)
 
@@ -204,54 +207,19 @@ class Dispositivo:
                 dispositivos_ativos[nome] = (ip, porta, ultimo_heartbeat)
         return dispositivos_ativos
 
-    # envia arquivo para outro dispositivo, bloco a bloco, com confirmação e verificação de integridade
+    # envia arquivo para outro dispositivo, bloco a bloco, com confirmação de cada etapa e verificação de integridade
     def enviar_arquivo(self, nome_destino: str, caminho_arquivo: str) -> bool:
-        """
-        Envia um arquivo para outro dispositivo, garantindo confiabilidade via ACKs.
-        O processo é dividido em 3 fases:
-        1. Envio do FILE com metadados e espera do ACK
-        2. Envio dos blocos do arquivo, cada um com seu ACK
-        3. Envio do END com hash e espera do ACK final
-        
-        Args:
-            nome_destino: Nome do dispositivo que receberá o arquivo
-            caminho_arquivo: Caminho completo do arquivo a ser enviado
-            
-        Returns:
-            bool: True se o arquivo foi enviado com sucesso, False caso contrário
-        """
-        # verifica se o dispositivo destino está ativo
         if nome_destino not in self.dispositivos_ativos:
             print(f"\nErro: Dispositivo {nome_destino} não encontrado")
             return False
-            
-        # verifica se o arquivo existe
         if not os.path.isfile(caminho_arquivo):
             print(f"\nErro: Arquivo '{caminho_arquivo}' não encontrado")
             return False
-
-        # obtém informações do arquivo e do destino
-        ip, porta, _ = self.dispositivos_ativos[nome_destino]  # extrai endereço do destino
-        nome_arquivo = os.path.basename(caminho_arquivo)  # pega apenas o nome do arquivo
-        tamanho_total = os.path.getsize(caminho_arquivo)  # obtém tamanho em bytes
-        total_blocos = (tamanho_total + CHUNK_SIZE - 1) // CHUNK_SIZE  # calcula número de blocos
-        
-        # gera um identificador único para esta transferência
-        # usa nome do arquivo + timestamp para evitar colisões
+        ip, porta, _ = self.dispositivos_ativos[nome_destino]
+        nome_arquivo = os.path.basename(caminho_arquivo)
+        tamanho_total = os.path.getsize(caminho_arquivo)
+        total_blocos = (tamanho_total + CHUNK_SIZE - 1) // CHUNK_SIZE
         id_arquivo = f"{nome_arquivo}_{int(time.time())}"
-        
-        # prepara estado de envio para controle de retransmissão e ACKs
-        self.estado_envio_arquivo = {
-            'id': id_arquivo,  # identificador único da transferência
-            'arquivo': caminho_arquivo,  # caminho completo do arquivo
-            'destino': (ip, porta),  # endereço do destinatário
-            'total_blocos': total_blocos,  # número total de blocos
-            'blocos_confirmados': set(),  # conjunto de blocos já confirmados
-            'blocos_pendentes': set(range(total_blocos)),  # conjunto de blocos ainda não enviados
-            'ack_final': False  # flag indicando se recebeu ACK do END
-        }
-
-        # FASE 1: Envio do FILE com metadados
         msg_file = f"FILE {id_arquivo} {nome_arquivo} {tamanho_total}"
         try:
             self.socket.sendto(msg_file.encode(), (ip, porta))
@@ -259,65 +227,48 @@ class Dispositivo:
         except Exception as e:
             print(f"Erro ao enviar FILE: {e}")
             return False
-
-        # aguarda confirmação do FILE antes de enviar blocos
-        for _ in range(30):  # tenta por 3 segundos (30 * 0.1)
+        for _ in range(30):
             if id_arquivo in self.acks_recebidos:
                 break
             time.sleep(0.1)
         else:
             print("Timeout esperando ACK do FILE, abortando envio.")
             return False
-
-        # FASE 2: Envio dos blocos do arquivo
         try:
             with open(caminho_arquivo, 'rb') as arquivo:
                 for seq in range(total_blocos):
-                    # lê o próximo bloco
                     dados = arquivo.read(CHUNK_SIZE)
                     if not dados:
                         break
-                        
-                    # codifica em base64 para envio seguro via texto
                     dados_b64 = base64.b64encode(dados).decode()
                     msg_chunk = f"CHUNK {id_arquivo} {seq} {dados_b64}"
-
-                    # envia bloco e aguarda ACK
-                    for tentativa in range(3):  # tenta enviar cada bloco até 3 vezes
+                    tentativas = 0
+                    while tentativas < 3:
                         self.socket.sendto(msg_chunk.encode(), (ip, porta))
-                        print(f"Enviado bloco {seq+1}/{total_blocos}")
-                        
-                        # espera ACK deste bloco
-                        for _ in range(20):  # espera 2 segundos (20 * 0.1)
+                        print(f"Enviando bloco {seq+1}/{total_blocos} do arquivo {nome_arquivo}")
+                        for _ in range(20):
                             if (id_arquivo, seq) in self.acks_recebidos:
-                                self.estado_envio_arquivo['blocos_confirmados'].add(seq)
                                 break
                             time.sleep(0.1)
                         else:
-                            print(f"Sem ACK do bloco {seq}, retransmitindo...")
+                            tentativas += 1
+                            print(f"Timeout esperando ACK do bloco {seq}, retransmitindo...")
                             continue
                         break
                     else:
                         print(f"Falha ao enviar bloco {seq}, abortando envio.")
                         return False
-
         except Exception as e:
             print(f"Erro ao ler/enviar arquivo: {e}")
             return False
-
-        # FASE 3: Envio do END com hash
         hash_arquivo = self._calcular_hash_arquivo(caminho_arquivo)
         msg_end = f"END {id_arquivo} {hash_arquivo}"
         self.socket.sendto(msg_end.encode(), (ip, porta))
-
-        # espera ACK do END
-        for _ in range(30):  # tenta por 3 segundos (30 * 0.1)
+        for _ in range(30):
             if (id_arquivo, 'END') in self.acks_recebidos:
                 print("Arquivo enviado e confirmado com sucesso!")
-                self.estado_envio_arquivo = None  # limpa estado de envio
                 return True
             time.sleep(0.1)
-            
         print("Timeout esperando ACK do END, possível falha de integridade.")
         return False
 
@@ -347,32 +298,20 @@ class Dispositivo:
 
     # processa mensagem FILE, inicializa estrutura para receber arquivo
     def _processar_file(self, partes: List[str], endereco):
-        """
-        Processa mensagem FILE recebida, inicializa estrutura para receber arquivo.
-        
-        Args:
-            partes: Lista com partes da mensagem [FILE, id, nome, tamanho]
-            endereco: Endereço (ip, porta) do remetente
-        """
         if len(partes) < 4:
             return
-            
         id_arquivo = partes[1]
         nome_arquivo = partes[2]
         tamanho_total = int(partes[3])
         total_blocos = (tamanho_total + CHUNK_SIZE - 1) // CHUNK_SIZE
-        
         print(f"\nSolicitação de recebimento de arquivo: {nome_arquivo} ({tamanho_total} bytes)")
-        
-        # envia ACK para confirmar recebimento do FILE
+        # envia ACK para confirmar recebimento do FILE (sempre unicast para quem enviou)
         ack_msg = f"ACK {id_arquivo}"
         try:
             self.socket.sendto(ack_msg.encode(), endereco)
         except Exception as e:
             print(f"Erro ao enviar ACK de FILE: {e}")
             return
-            
-        # inicializa estrutura para receber o arquivo
         self.arquivos_recebidos[id_arquivo] = {
             'nome': nome_arquivo,
             'tamanho': tamanho_total,
@@ -383,41 +322,27 @@ class Dispositivo:
 
     # processa mensagem CHUNK, armazena bloco recebido e envia ACK
     def _processar_chunk(self, partes: List[str], endereco):
-        """
-        Processa mensagem CHUNK recebida, armazena bloco e envia ACK.
-        
-        Args:
-            partes: Lista com partes da mensagem [CHUNK, id, seq, dados_b64]
-            endereco: Endereço (ip, porta) do remetente
-        """
         if len(partes) < 4:
             return
-            
         id_arquivo = partes[1]
         seq = int(partes[2])
         dados_b64 = partes[3]
-        
         if id_arquivo not in self.arquivos_recebidos:
             return
-            
         estado = self.arquivos_recebidos[id_arquivo]
         total = estado['total_blocos']
-        
         if seq >= total:
             return  # ignora blocos extras
-            
         try:
             dados = base64.b64decode(dados_b64)
         except Exception:
-            print(f"Erro ao processar bloco {seq}: Incorrect padding")
+            print(f"Erro ao processar bloco {seq}: Dados inválidos")
             return
-            
         if seq not in estado['blocos_recebidos']:
             estado['blocos_recebidos'][seq] = True
             estado['dados'][seq] = dados
             print(f"Recebido bloco {seq+1}/{total}")
-            
-        # envia ACK para o bloco recebido
+        # envia ACK para o bloco recebido (sempre unicast para quem enviou)
         ack_msg = f"ACK {id_arquivo} {seq}"
         try:
             self.socket.sendto(ack_msg.encode(), endereco)
@@ -426,28 +351,16 @@ class Dispositivo:
 
     # processa mensagem END, verifica integridade e responde com ACK ou NACK
     def _processar_end(self, partes: List[str], endereco):
-        """
-        Processa mensagem END recebida, verifica integridade e responde com ACK ou NACK.
-        
-        Args:
-            partes: Lista com partes da mensagem [END, id, hash]
-            endereco: Endereço (ip, porta) do remetente
-        """
         if len(partes) < 3:
             print("Mensagem END inválida: número insuficiente de partes")
             return
-            
         id_arquivo = partes[1]
         hash_recebido = partes[2]
-        
         if id_arquivo not in self.arquivos_recebidos:
             print(f"Arquivo com id {id_arquivo} não encontrado para verificação de hash.")
             return
-            
         estado = self.arquivos_recebidos[id_arquivo]
         nome_arquivo = estado['nome']
-        
-        # verifica se todos os blocos foram recebidos
         total_blocos = estado['total_blocos']
         blocos_recebidos = len(estado['dados'])
         if blocos_recebidos != total_blocos:
@@ -458,19 +371,13 @@ class Dispositivo:
             except Exception as e:
                 print(f"Erro ao enviar NACK: {e}")
             return
-        
-        # salva arquivo temporário para verificação de hash
         temp_filename = f"temp_{id_arquivo}.bin"
         if not self._salvar_arquivo_recebido(id_arquivo, temp_filename):
             print("Erro ao salvar arquivo temporário para verificação de hash")
             return
-            
-        # calcula hash do arquivo recebido
         hash_calculado = self._calcular_hash_arquivo(temp_filename)
-        
         if hash_calculado == hash_recebido:
             print(f"Arquivo recebido com sucesso e verificado! Hash: {hash_calculado}")
-            # salva com nome original
             if self._salvar_arquivo_recebido(id_arquivo, nome_arquivo):
                 print(f"Arquivo salvo como {nome_arquivo}")
                 ack_msg = f"ACK {id_arquivo} END"
@@ -493,8 +400,6 @@ class Dispositivo:
                 self.socket.sendto(nack_msg.encode(), endereco)
             except Exception as e:
                 print(f"Erro ao enviar NACK: {e}")
-            
-        # remove arquivo temporário
         try:
             os.remove(temp_filename)
         except Exception:
@@ -503,29 +408,18 @@ class Dispositivo:
     def _salvar_arquivo_recebido(self, id_arquivo: str, nome_destino: str) -> bool:
         """
         Salva o arquivo recebido em disco a partir dos blocos armazenados.
-        Os blocos são salvos em ordem para garantir a integridade do arquivo.
-        
-        Args:
-            id_arquivo: ID da transferência
-            nome_destino: Nome do arquivo de destino
-            
-        Returns:
-            bool: True se o arquivo foi salvo com sucesso, False caso contrário
+        Sempre salva como binário.
         """
         if id_arquivo not in self.arquivos_recebidos:
             print(f"Arquivo com id {id_arquivo} não encontrado.")
             return False
-            
         estado = self.arquivos_recebidos[id_arquivo]
         dados = estado['dados']
-        
         if not dados:
             print(f"Nenhum bloco recebido para o arquivo {id_arquivo}.")
             return False
-            
         try:
             with open(nome_destino, 'wb') as f:
-                # escreve os blocos em ordem
                 for seq in sorted(dados.keys()):
                     f.write(dados[seq])
             print(f"Arquivo salvo como {nome_destino}")
@@ -589,7 +483,7 @@ class Dispositivo:
 
     # encerra o dispositivo, finaliza threads, fecha socket e log
     def encerrar(self):
-        self._log("Encerrando dispositivo...")
+        self._log("Encerrando dispositivo...", mostrar_tela=True)
         self.running = False
         try:
             self.thread_heartbeat.join(timeout=1)
@@ -600,8 +494,4 @@ class Dispositivo:
         try:
             self.socket.close()
         except Exception as e:
-            self._log(f"Erro ao fechar socket: {e}")
-        try:
-            self.log_file.close()
-        except Exception as e:
-            print(f"Erro ao fechar arquivo de log: {e}") 
+            self._log(f"Erro ao fechar socket: {e}") 

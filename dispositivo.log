@@ -1,0 +1,42 @@
+2025-05-04 19:10:15,398 - INFO - Dispositivo dispositivo1 inicializado na porta 5000
+2025-05-04 19:10:15,399 - INFO - Usando endereço de broadcast: 255.255.255.255
+2025-05-04 19:10:15,402 - ERROR - ERRO ao receber mensagem: Logger._log() got an unexpected keyword argument 'mostrar_tela'
+2025-05-04 19:10:15,404 - INFO - Interface de usuário inicializada
+2025-05-04 19:10:20,408 - ERROR - ERRO ao receber mensagem: Logger._log() got an unexpected keyword argument 'mostrar_tela'
+2025-05-04 19:10:25,411 - ERROR - ERRO ao receber mensagem: Logger._log() got an unexpected keyword argument 'mostrar_tela'
+2025-05-04 19:10:30,129 - INFO - Dispositivo dispositivo2 inicializado na porta 5001
+2025-05-04 19:10:30,129 - INFO - Usando endereço de broadcast: 255.255.255.255
+2025-05-04 19:10:30,132 - ERROR - ERRO ao receber mensagem: Logger._log() got an unexpected keyword argument 'mostrar_tela'
+2025-05-04 19:10:30,133 - INFO - Interface de usuário inicializada
+2025-05-04 19:10:30,134 - ERROR - ERRO ao receber mensagem: Logger._log() got an unexpected keyword argument 'mostrar_tela'
+2025-05-04 19:10:30,415 - ERROR - ERRO ao receber mensagem: Logger._log() got an unexpected keyword argument 'mostrar_tela'
+2025-05-04 19:10:30,416 - ERROR - ERRO ao receber mensagem: Logger._log() got an unexpected keyword argument 'mostrar_tela'
+2025-05-04 19:10:35,138 - ERROR - ERRO ao receber mensagem: Logger._log() got an unexpected keyword argument 'mostrar_tela'
+2025-05-04 19:10:35,139 - ERROR - ERRO ao receber mensagem: Logger._log() got an unexpected keyword argument 'mostrar_tela'
+2025-05-04 19:10:35,418 - ERROR - ERRO ao receber mensagem: Logger._log() got an unexpected keyword argument 'mostrar_tela'
+2025-05-04 19:10:35,419 - ERROR - ERRO ao receber mensagem: Logger._log() got an unexpected keyword argument 'mostrar_tela'
+2025-05-04 19:10:40,142 - ERROR - ERRO ao receber mensagem: Logger._log() got an unexpected keyword argument 'mostrar_tela'
+2025-05-04 19:10:40,142 - ERROR - ERRO ao receber mensagem: Logger._log() got an unexpected keyword argument 'mostrar_tela'
+2025-05-04 19:10:40,422 - ERROR - ERRO ao receber mensagem: Logger._log() got an unexpected keyword argument 'mostrar_tela'
+2025-05-04 19:10:40,423 - ERROR - ERRO ao receber mensagem: Logger._log() got an unexpected keyword argument 'mostrar_tela'
+2025-05-04 19:10:45,146 - ERROR - ERRO ao receber mensagem: Logger._log() got an unexpected keyword argument 'mostrar_tela'
+2025-05-04 19:10:45,146 - ERROR - ERRO ao receber mensagem: Logger._log() got an unexpected keyword argument 'mostrar_tela'
+2025-05-04 19:10:45,426 - ERROR - ERRO ao receber mensagem: Logger._log() got an unexpected keyword argument 'mostrar_tela'
+2025-05-04 19:10:45,427 - ERROR - ERRO ao receber mensagem: Logger._log() got an unexpected keyword argument 'mostrar_tela'
+2025-05-04 19:10:50,148 - ERROR - ERRO ao receber mensagem: Logger._log() got an unexpected keyword argument 'mostrar_tela'
+2025-05-04 19:10:50,148 - ERROR - ERRO ao receber mensagem: Logger._log() got an unexpected keyword argument 'mostrar_tela'
+2025-05-04 19:10:50,430 - ERROR - ERRO ao receber mensagem: Logger._log() got an unexpected keyword argument 'mostrar_tela'
+2025-05-04 19:10:50,431 - ERROR - ERRO ao receber mensagem: Logger._log() got an unexpected keyword argument 'mostrar_tela'
+2025-05-04 19:10:55,150 - ERROR - ERRO ao receber mensagem: Logger._log() got an unexpected keyword argument 'mostrar_tela'
+2025-05-04 19:10:55,151 - ERROR - ERRO ao receber mensagem: Logger._log() got an unexpected keyword argument 'mostrar_tela'
+2025-05-04 19:10:55,432 - ERROR - ERRO ao receber mensagem: Logger._log() got an unexpected keyword argument 'mostrar_tela'
+2025-05-04 19:10:55,434 - ERROR - ERRO ao receber mensagem: Logger._log() got an unexpected keyword argument 'mostrar_tela'
+2025-05-04 19:10:56,109 - WARNING - Tentativa de enviar mensagem para dispositivo não encontrado: dispositivo1
+2025-05-04 19:11:00,154 - ERROR - ERRO ao receber mensagem: Logger._log() got an unexpected keyword argument 'mostrar_tela'
+2025-05-04 19:11:00,155 - ERROR - ERRO ao receber mensagem: Logger._log() got an unexpected keyword argument 'mostrar_tela'
+2025-05-04 19:11:00,436 - ERROR - ERRO ao receber mensagem: Logger._log() got an unexpected keyword argument 'mostrar_tela'
+2025-05-04 19:11:00,437 - ERROR - ERRO ao receber mensagem: Logger._log() got an unexpected keyword argument 'mostrar_tela'
+2025-05-04 19:11:00,623 - INFO - Interface de usuário encerrada pelo usuário
+2025-05-04 19:11:00,623 - INFO - Encerrando dispositivo...
+2025-05-04 19:11:02,810 - INFO - Interface de usuário encerrada pelo usuário
+2025-05-04 19:11:02,810 - INFO - Encerrando dispositivo...
