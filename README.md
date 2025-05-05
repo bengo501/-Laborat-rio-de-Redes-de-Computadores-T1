@@ -140,9 +140,3 @@ No Windows:
 1. Abra "Firewall do Windows com Segurança Avançada"
 2. Crie regra de entrada para UDP 5000-5010
 3. Permita tráfego de/para programas Python
-
-## Contribuições
-Contribuições são bem-vindas! Por favor, abra uma issue ou pull request.
-
-## Licença
-Este projeto está licenciado sob a MIT License - veja o arquivo LICENSE para detalhes. 
